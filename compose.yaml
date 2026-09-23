@@ -1,0 +1,96 @@
+name: distributed-job-scheduler
+
+x-control: &control
+  image: distributed-job-scheduler:1.0.0
+  build: .
+  init: true
+  restart: unless-stopped
+  networks: [backend]
+  volumes:
+    - db-auth:/run/db-auth:ro
+  healthcheck:
+    test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=2)"]
+    interval: 3s
+    timeout: 3s
+    retries: 20
+    start_period: 10s
+
+services:
+  postgres:
+    image: postgres:17.6-alpine3.22
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: scheduler
+      POSTGRES_DB: scheduler
+    entrypoint: [/bin/sh, /opt/deploy/postgres-entrypoint.sh]
+    command: [postgres]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - db-auth:/run/db-auth
+      - ./deploy/postgres-entrypoint.sh:/opt/deploy/postgres-entrypoint.sh:ro
+    networks: [backend]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U scheduler -d scheduler"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+      <<: *control
+      environment:
+        ROLE: api
+        DATABASE_URL: postgresql://scheduler@postgres:5432/scheduler
+        DATABASE_PASSWORD_FILE: /run/db-auth/password
+        DEFAULT_MAX_RETRIES: ${DEFAULT_MAX_RETRIES:-3}
+      ports: ["127.0.0.1:8080:8080"]
+      networks: [backend, public]
+      depends_on:
+        postgres:
+          condition: service_healthy
+
+  scheduler:
+    <<: *control
+    environment:
+      ROLE: scheduler
+      DATABASE_URL: postgresql://scheduler@postgres:5432/scheduler
+      DATABASE_PASSWORD_FILE: /run/db-auth/password
+      POLL_INTERVAL_MS: ${POLL_INTERVAL_MS:-500}
+      HEARTBEAT_INTERVAL_MS: ${HEARTBEAT_INTERVAL_MS:-5000}
+      WORKER_TIMEOUT_MS: ${WORKER_TIMEOUT_MS:-30000}
+      ASSIGNMENT_TIMEOUT_MS: ${ASSIGNMENT_TIMEOUT_MS:-15000}
+      EXECUTION_LEASE_MS: ${EXECUTION_LEASE_MS:-30000}
+      MAX_EXECUTION_MS: ${MAX_EXECUTION_MS:-300000}
+      RECOVERY_INTERVAL_MS: ${RECOVERY_INTERVAL_MS:-1000}
+      DEFAULT_MAX_RETRIES: ${DEFAULT_MAX_RETRIES:-3}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  worker:
+    image: distributed-job-scheduler:1.0.0
+    build: .
+    init: true
+    restart: unless-stopped
+    command: [python, -m, scheduler.worker.runtime]
+    stop_grace_period: 45s
+    environment:
+      SCHEDULER_URL: http://scheduler:8080
+      WORKER_CAPACITY: ${WORKER_CAPACITY:-1}
+      WORKER_OPERATIONS: ${WORKER_OPERATIONS-PRIME_COUNT,RANGE_SUM,MONTE_CARLO_PI}
+      WORKER_DRAIN_TIMEOUT_SECONDS: ${WORKER_DRAIN_TIMEOUT_SECONDS:-30}
+      WORKER_METRICS_FILE: /tmp/worker-metrics.prom
+    networks: [backend]
+    deploy:
+      replicas: 3
+    depends_on:
+      scheduler:
+        condition: service_healthy
+
+networks:
+  backend:
+    internal: true
+  public:
+
+volumes:
+  pgdata:
+  db-auth:

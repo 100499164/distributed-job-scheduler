@@ -1,0 +1,44 @@
+# Overlay used in a separate, uniquely named project by capability_showcase.py.
+# !override requires Docker Compose >= 2.24.4.
+services:
+  api:
+    ports: !override ["127.0.0.1:${CAPABILITY_DEMO_PORT:-8082}:8080"]
+  scheduler:
+    environment:
+      POLL_INTERVAL_MS: 100
+      HEARTBEAT_INTERVAL_MS: 500
+      WORKER_TIMEOUT_MS: 4000
+      ASSIGNMENT_TIMEOUT_MS: 4000
+      EXECUTION_LEASE_MS: 5000
+      RECOVERY_INTERVAL_MS: 200
+  worker:
+    deploy:
+      replicas: 0
+  worker-prime:
+    extends:
+      file: compose.yaml
+      service: worker
+    environment:
+      WORKER_OPERATIONS: PRIME_COUNT
+      WORKER_CAPACITY: 1
+    deploy:
+      replicas: 1
+  worker-pi:
+    extends:
+      file: compose.yaml
+      service: worker
+    restart: "no"
+    environment:
+      WORKER_OPERATIONS: MONTE_CARLO_PI
+      WORKER_CAPACITY: 1
+    deploy:
+      replicas: 1
+  worker-general:
+    extends:
+      file: compose.yaml
+      service: worker
+    environment:
+      WORKER_OPERATIONS: PRIME_COUNT,RANGE_SUM,MONTE_CARLO_PI
+      WORKER_CAPACITY: 1
+    deploy:
+      replicas: 1
