@@ -1,0 +1,35 @@
+name: correctness
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.11'
+      - run: python -m pip install -r requirements-dev.lock
+      - run: python -m pip install --no-deps --no-build-isolation -e .
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy
+      - run: python -m pytest --cov=scheduler --cov-report=term-missing --cov-report=xml
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: verification/coverage.xml
+      - run: docker compose config --quiet
+      - run: docker compose up --build -d --wait
+      - run: python deploy/demo.py
+      - run: python deploy/showcase.py
+      - run: python deploy/fairness_showcase.py
+      - if: always()
+        run: docker compose logs --no-color > compose.log
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-logs
+          path: compose.log
+      - if: always()
+        run: docker compose down -v
