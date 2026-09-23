@@ -26,7 +26,14 @@ include = ["scheduler*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
-markers = ["integration: real PostgreSQL", "e2e: real HTTP processes", "fault: controlled failure injection"]
+markers = [
+    "integration: real PostgreSQL",
+    "e2e: real HTTP processes",
+    "fault: controlled failure injection"
+]
+filterwarnings = [
+    'ignore:The @wait_container_is_ready decorator is deprecated.*:DeprecationWarning:testcontainers.*'
+]
 
 [tool.ruff]
 target-version = "py312"
