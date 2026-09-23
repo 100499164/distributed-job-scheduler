@@ -283,7 +283,7 @@ def create_app(role=None, dsn=None, settings=None):
     else:
 
         def scheduler(request):
-            jobs(request) 
+            jobs(request)
             return request.app.state.scheduler
 
         @app.post("/internal/v1/workers/register")

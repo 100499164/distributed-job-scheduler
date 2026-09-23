@@ -97,7 +97,7 @@ class Jobs:
             ).fetchone()
             if not inserted:
                 existing = c.execute("SELECT * FROM jobs WHERE idempotency_key=%s", (key,)).fetchone()
-                assert existing is not None 
+                assert existing is not None
                 if existing["request_hash"] != digest:
                     raise Conflict("IDEMPOTENCY_CONFLICT", "Key already used with different content")
                 return self._created(existing), False

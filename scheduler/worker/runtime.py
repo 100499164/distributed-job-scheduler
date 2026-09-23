@@ -366,7 +366,7 @@ class Worker:
                 if unfinished:
                     event("uncooperative_workload", worker_id=self.id)
                     # Python cannot stop a running thread, so force process exit after the drain timeout.
-# Persisted leases allow the scheduler to recover the unfinished attempt.
+                    # Persisted leases allow the scheduler to recover the unfinished attempt.
                     os._exit(2)
             self.executor.shutdown(wait=True, cancel_futures=True)
 
