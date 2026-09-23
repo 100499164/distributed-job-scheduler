@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "distributed-job-scheduler"
+version = "1.0.0"
+description = "Distributed job scheduler built in Python with PostgreSQL-backed coordination"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi==0.116.1", "uvicorn==0.35.0", "psycopg[binary]==3.2.9",
+  "psycopg-pool==3.2.6", "prometheus-client==0.22.1",
+  "pydantic==2.11.7", "anyio==4.9.0"
+]
+
+[project.optional-dependencies]
+test = ["pytest==8.4.2", "httpx==0.28.1", "testcontainers[postgres]==4.13.1", "pytest-cov==6.2.1"]
+dev = ["ruff==0.11.13", "mypy==1.16.1", "coverage==7.8.2"]
+
+[tool.setuptools.packages.find]
+include = ["scheduler*"]
+
+[tool.setuptools.package-data]
+"scheduler.persistence" = ["migrations/*.sql"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = ["integration: real PostgreSQL", "e2e: real HTTP processes", "fault: controlled failure injection"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 110
+extend-exclude = ["verification"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# Executable scripts first add the checkout root to sys.path.
+"benchmarks/*.py" = ["E402"]
+"deploy/*.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["scheduler"]
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = ["scheduler.persistence.*", "scheduler.control_plane.domain", "scheduler.control_plane.jobs", "scheduler.control_plane.selection", "scheduler.control_plane.scheduling", "scheduler.control_plane.recovery", "scheduler.worker.*", "scheduler.workloads.*", "scheduler.protocol.*", "scheduler.config"]
+disallow_untyped_defs = true
+
+[tool.coverage.run]
+source = ["scheduler"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.coverage.xml]
+output = "verification/coverage.xml"

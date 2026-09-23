@@ -1,0 +1,46 @@
+# Local repository and tooling metadata
+.git
+.idea
+.vscode
+
+# Python environments, caches and build output
+.venv
+venv
+env
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+.tox
+.nox
+.coverage
+.coverage.*
+htmlcov
+coverage.xml
+build
+dist
+**/*.egg-info
+
+# Local configuration, reports and archives
+.env
+.env.*
+*.log
+**/*.log
+**/*.swp
+**/*.swo
+**/*~
+**/.DS_Store
+**/Thumbs.db
+**/Desktop.ini
+verification
+benchmarks/results
+/*.zip
+/*.tar
+/*.tar.gz
+/*.tgz
+/*.7z
+
+# Not needed by the runtime image
+tests
+docs
