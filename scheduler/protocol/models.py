@@ -3,30 +3,64 @@
 from typing import Annotated, Literal, Self, get_args
 from uuid import UUID
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    field_validator,
+    model_validator,
+)
 
-Operation = Literal["PRIME_COUNT", "RANGE_SUM", "MONTE_CARLO_PI"]
-KNOWN_OPERATIONS = tuple(sorted(get_args(Operation)))
+Operation = Literal[
+    "PRIME_COUNT",
+    "RANGE_SUM",
+    "MONTE_CARLO_PI",
+]
+
+KNOWN_OPERATIONS = tuple(
+    sorted(get_args(Operation))
+)
 
 
-def canonical_operations(operations: list[Operation]) -> list[Operation]:
+def canonical_operations(
+    operations: list[Operation],
+) -> list[Operation]:
+    # Keep capabilities unique and consistently ordered.
     if len(set(operations)) != len(operations):
         raise ValueError("Duplicate supported operation")
+
     return sorted(operations)
 
 
 SupportedOperations = Annotated[
-    list[Operation], Field(strict=True, min_length=1, max_length=3), AfterValidator(canonical_operations)
+    list[Operation],
+    Field(
+        strict=True,
+        min_length=1,
+        max_length=3,
+    ),
+    AfterValidator(canonical_operations),
 ]
 
 
 def camel(value: str) -> str:
     first, *rest = value.split("_")
-    return first + "".join(word.title() for word in rest)
+
+    return first + "".join(
+        word.title()
+        for word in rest
+    )
 
 
 class WireModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True, alias_generator=camel)
+    # Wire format uses camelCase and rejects unknown fields.
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        alias_generator=camel,
+    )
 
 
 class IntervalPayload(WireModel):
@@ -35,73 +69,193 @@ class IntervalPayload(WireModel):
 
     @model_validator(mode="after")
     def interval(self) -> Self:
+        # Empty or reversed intervals do not represent valid work.
         if self.from_inclusive >= self.to_exclusive:
-            raise ValueError("Interval must be nonempty")
+            raise ValueError(
+                "Interval must be nonempty"
+            )
+
         return self
 
     @property
     def work_units(self) -> int:
-        return self.to_exclusive - self.from_inclusive
+        return (
+            self.to_exclusive
+            - self.from_inclusive
+        )
 
 
 class PrimePayload(IntervalPayload):
     operation: Literal["PRIME_COUNT"] = "PRIME_COUNT"
-    from_inclusive: Annotated[StrictInt, Field(ge=2, le=999_999_999)]
-    to_exclusive: Annotated[StrictInt, Field(ge=3, le=1_000_000_000)]
+
+    from_inclusive: Annotated[
+        StrictInt,
+        Field(
+            ge=2,
+            le=999_999_999,
+        ),
+    ]
+
+    to_exclusive: Annotated[
+        StrictInt,
+        Field(
+            ge=3,
+            le=1_000_000_000,
+        ),
+    ]
 
 
 class RangeSumPayload(IntervalPayload):
     operation: Literal["RANGE_SUM"] = "RANGE_SUM"
-    from_inclusive: Annotated[StrictInt, Field(ge=-100_000_000, le=99_999_999)]
-    to_exclusive: Annotated[StrictInt, Field(ge=-99_999_999, le=100_000_000)]
+
+    from_inclusive: Annotated[
+        StrictInt,
+        Field(
+            ge=-100_000_000,
+            le=99_999_999,
+        ),
+    ]
+
+    to_exclusive: Annotated[
+        StrictInt,
+        Field(
+            ge=-99_999_999,
+            le=100_000_000,
+        ),
+    ]
 
 
 class MonteCarloPayload(WireModel):
     operation: Literal["MONTE_CARLO_PI"] = "MONTE_CARLO_PI"
-    samples: Annotated[StrictInt, Field(ge=1, le=100_000_000)]
-    seed: Annotated[StrictInt, Field(ge=0, le=2**53 - 1)]
+
+    samples: Annotated[
+        StrictInt,
+        Field(
+            ge=1,
+            le=100_000_000,
+        ),
+    ]
+
+    seed: Annotated[
+        StrictInt,
+        Field(
+            ge=0,
+            le=2**53 - 1,
+        ),
+    ]
 
     @property
     def work_units(self) -> int:
         return self.samples
 
 
-Payload = Annotated[PrimePayload | RangeSumPayload | MonteCarloPayload, Field(discriminator="operation")]
+# Pydantic chooses the payload model from the operation field.
+Payload = Annotated[
+    PrimePayload
+    | RangeSumPayload
+    | MonteCarloPayload,
+    Field(
+        discriminator="operation"
+    ),
+]
 
 
 class CreateJob(WireModel):
-    name: Annotated[str, Field(min_length=1, max_length=120)]
-    task_count: Annotated[StrictInt, Field(ge=1, le=10000)]
-    payload: Payload
-    max_retries: Annotated[StrictInt, Field(ge=0, le=10)] | None = None
+    name: Annotated[
+        str,
+        Field(
+            min_length=1,
+            max_length=120,
+        ),
+    ]
 
-    @field_validator("payload", mode="before")
+    task_count: Annotated[
+        StrictInt,
+        Field(
+            ge=1,
+            le=10000,
+        ),
+    ]
+
+    payload: Payload
+
+    max_retries: Annotated[
+        StrictInt,
+        Field(
+            ge=0,
+            le=10,
+        ),
+    ] | None = None
+
+    @field_validator(
+        "payload",
+        mode="before",
+    )
     @classmethod
-    def legacy_operation(cls, value: object) -> object:
+    def legacy_operation(
+        cls,
+        value: object,
+    ) -> object:
+        # Older requests without an operation default to PRIME_COUNT.
         if isinstance(value, dict) and "operation" not in value:
-            return {**value, "operation": "PRIME_COUNT"}
+            return {
+                **value,
+                "operation": "PRIME_COUNT",
+            }
+
         return value
 
     @field_validator("name")
     @classmethod
-    def nonblank(cls, value: str) -> str:
+    def nonblank(
+        cls,
+        value: str,
+    ) -> str:
         if not value.strip():
-            raise ValueError("Name cannot be blank")
+            raise ValueError(
+                "Name cannot be blank"
+            )
+
         return value
 
     @model_validator(mode="after")
     def nonempty_partitions(self) -> Self:
+        # Every requested task must receive at least one unit of work.
         if self.task_count > self.payload.work_units:
-            raise ValueError("Each partition must contain at least one work unit")
+            raise ValueError(
+                "Each partition must contain at least one work unit"
+            )
+
         return self
 
 
 class Register(WireModel):
     worker_id: UUID
-    hostname: Annotated[str, Field(min_length=1, max_length=255)]
-    capacity: Annotated[StrictInt, Field(ge=1, le=64)]
+
+    hostname: Annotated[
+        str,
+        Field(
+            min_length=1,
+            max_length=255,
+        ),
+    ]
+
+    capacity: Annotated[
+        StrictInt,
+        Field(
+            ge=1,
+            le=64,
+        ),
+    ]
+
     version: Literal["1"]
-    supported_operations: SupportedOperations = Field(default_factory=lambda: list(KNOWN_OPERATIONS))
+
+    # Workers support every known operation unless they declare otherwise.
+    supported_operations: SupportedOperations = Field(
+        default_factory=lambda: list(
+            KNOWN_OPERATIONS
+        )
+    )
 
 
 class Claim(WireModel):
@@ -114,60 +268,131 @@ class Owner(WireModel):
 
 
 class Heartbeat(WireModel):
-    active_attempt_ids: Annotated[list[UUID], Field(max_length=64)]
+    active_attempt_ids: Annotated[
+        list[UUID],
+        Field(
+            max_length=64,
+        ),
+    ]
 
-    @field_validator("active_attempt_ids")
+    @field_validator(
+        "active_attempt_ids"
+    )
     @classmethod
-    def unique(cls, value: list[UUID]) -> list[UUID]:
+    def unique(
+        cls,
+        value: list[UUID],
+    ) -> list[UUID]:
+        # Duplicate IDs would make lease renewal ambiguous.
         if len(set(value)) != len(value):
-            raise ValueError("Duplicate attempt IDs")
+            raise ValueError(
+                "Duplicate attempt IDs"
+            )
+
         return value
 
 
 class PrimeCountResult(WireModel):
-    prime_count: Annotated[StrictInt, Field(ge=0, le=1_000_000_000)]
+    prime_count: Annotated[
+        StrictInt,
+        Field(
+            ge=0,
+            le=1_000_000_000,
+        ),
+    ]
 
 
 class RangeSumResult(WireModel):
-    range_sum: Annotated[StrictInt, Field(ge=-(2**53 - 1), le=2**53 - 1)]
+    range_sum: Annotated[
+        StrictInt,
+        Field(
+            ge=-(2**53 - 1),
+            le=2**53 - 1,
+        ),
+    ]
 
 
 class MonteCarloResult(WireModel):
-    samples: Annotated[StrictInt, Field(ge=1, le=100_000_000)]
-    inside_circle: Annotated[StrictInt, Field(ge=0, le=100_000_000)]
+    samples: Annotated[
+        StrictInt,
+        Field(
+            ge=1,
+            le=100_000_000,
+        ),
+    ]
+
+    inside_circle: Annotated[
+        StrictInt,
+        Field(
+            ge=0,
+            le=100_000_000,
+        ),
+    ]
 
     @model_validator(mode="after")
     def bounded_hits(self) -> Self:
+        # Hits inside the circle can never exceed the number of samples.
         if self.inside_circle > self.samples:
-            raise ValueError("insideCircle exceeds samples")
+            raise ValueError(
+                "insideCircle exceeds samples"
+            )
+
         return self
 
 
-TaskResult = PrimeCountResult | RangeSumResult | MonteCarloResult
+TaskResult = (
+    PrimeCountResult
+    | RangeSumResult
+    | MonteCarloResult
+)
 
 
 class ExecutionError(WireModel):
-    code: Literal["TRANSIENT_ERROR", "INVALID_PAYLOAD", "UNSUPPORTED_OPERATION", "EXECUTION_ERROR"]
+    code: Literal[
+        "TRANSIENT_ERROR",
+        "INVALID_PAYLOAD",
+        "UNSUPPORTED_OPERATION",
+        "EXECUTION_ERROR",
+    ]
+
     message: str
 
     @field_validator("message")
     @classmethod
-    def byte_limit(cls, value: str) -> str:
+    def byte_limit(
+        cls,
+        value: str,
+    ) -> str:
+        # Limit the encoded size, not just the number of characters.
         if len(value.encode("utf-8")) > 2048:
-            raise ValueError("Error message exceeds 2 KiB")
+            raise ValueError(
+                "Error message exceeds 2 KiB"
+            )
+
         return value
 
 
 class Completion(Owner):
-    outcome: Literal["SUCCEEDED", "FAILED"]
+    outcome: Literal[
+        "SUCCEEDED",
+        "FAILED",
+    ]
+
     result: TaskResult | None = None
     error: ExecutionError | None = None
 
     @model_validator(mode="after")
     def outcome_content(self) -> Self:
+        # Success carries a result; failure carries an error, never both.
         if self.outcome == "SUCCEEDED":
             if self.result is None or self.error is not None:
-                raise ValueError("Success requires only result")
+                raise ValueError(
+                    "Success requires only result"
+                )
+
         elif self.error is None or self.result is not None:
-            raise ValueError("Failure requires only error")
+            raise ValueError(
+                "Failure requires only error"
+            )
+
         return self

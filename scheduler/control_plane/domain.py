@@ -4,8 +4,13 @@ from datetime import datetime, timedelta
 
 from scheduler.persistence.database import Row
 
+# Allowed state transitions for each domain entity.
 EDGES = {
-    "job": {("QUEUED", "RUNNING"), ("RUNNING", "COMPLETED"), ("RUNNING", "FAILED")},
+    "job": {
+        ("QUEUED", "RUNNING"),
+        ("RUNNING", "COMPLETED"),
+        ("RUNNING", "FAILED"),
+    },
     "task": {
         ("QUEUED", "ASSIGNED"),
         ("RETRY_WAIT", "ASSIGNED"),
@@ -23,46 +28,107 @@ EDGES = {
         ("RUNNING", "FAILED"),
         ("RUNNING", "EXPIRED"),
     },
-    "worker": {("ONLINE", "OFFLINE")},
+    "worker": {
+        ("ONLINE", "OFFLINE"),
+    },
 }
-RETRYABLE = {"TRANSIENT_ERROR", "WORKER_LOST", "ASSIGNMENT_TIMEOUT", "LEASE_EXPIRED", "EXECUTION_TIMEOUT"}
+
+
+# Only these failures are allowed to consume another retry.
+RETRYABLE = {
+    "TRANSIENT_ERROR",
+    "WORKER_LOST",
+    "ASSIGNMENT_TIMEOUT",
+    "LEASE_EXPIRED",
+    "EXECUTION_TIMEOUT",
+}
 
 
 def transition(entity: str, previous: str, new: str) -> None:
+    # Keep state changes inside the transitions defined above.
     if (previous, new) not in EDGES[entity]:
-        raise ValueError(f"Invalid {entity} transition {previous} -> {new}")
+        raise ValueError(
+            f"Invalid {entity} transition {previous} -> {new}"
+        )
 
 
 def fingerprint(value: object) -> str:
+    # Stable JSON representation so equivalent payloads get the same hash.
     return hashlib.sha256(
-        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+        json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode()
     ).hexdigest()
 
 
-def retry_state(attempt_count: int, max_retries: int, error: str | None) -> str:
+def retry_state(
+    attempt_count: int,
+    max_retries: int,
+    error: str | None,
+) -> str:
     if not 0 <= max_retries <= 10 or not 1 <= attempt_count <= max_retries + 1:
         raise ValueError("Invalid attempt budget")
-    return "RETRY_WAIT" if error in RETRYABLE and attempt_count < max_retries + 1 else "FAILED"
+
+    # Retry only when the error is recoverable and there is budget left.
+    return (
+        "RETRY_WAIT"
+        if error in RETRYABLE and attempt_count < max_retries + 1
+        else "FAILED"
+    )
 
 
-def backoff(attempt_number: int, jitter: float) -> timedelta:
+def backoff(
+    attempt_number: int,
+    jitter: float,
+) -> timedelta:
     if attempt_number < 1 or not 0.8 <= jitter <= 1.2:
         raise ValueError("Invalid backoff input")
-    return timedelta(seconds=min(30, 2 ** min(attempt_number - 1, 5)) * jitter)
+
+    # Exponential backoff capped at 30 seconds.
+    return timedelta(
+        seconds=min(
+            30,
+            2 ** min(attempt_number - 1, 5),
+        )
+        * jitter
+    )
 
 
-def session_valid(worker: Row, now: datetime, timeout_ms: int) -> bool:
+def session_valid(
+    worker: Row,
+    now: datetime,
+    timeout_ms: int,
+) -> bool:
+    # A worker is valid while it is online and its heartbeat has not expired.
     return worker["status"] == "ONLINE" and now < worker["last_heartbeat_at"] + timedelta(
         milliseconds=timeout_ms
     )
 
 
-def attempt_valid(attempt: Row, now: datetime) -> bool:
+def attempt_valid(
+    attempt: Row,
+    now: datetime,
+) -> bool:
     deadline = attempt["execution_deadline_at"]
-    return now < attempt["lease_expires_at"] and (deadline is None or now < deadline)
+
+    # Both the lease and execution deadline must still be valid.
+    return now < attempt["lease_expires_at"] and (
+        deadline is None or now < deadline
+    )
 
 
 class Conflict(Exception):
-    def __init__(self, code: str, message: str, status: int = 409) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        status: int = 409,
+    ) -> None:
         super().__init__(message)
-        self.code, self.message, self.status = code, message, status
+
+        self.code = code
+        self.message = message
+        self.status = status
