@@ -9,12 +9,20 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from uuid import uuid4
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(
+    0,
+    str(Path(__file__).resolve().parents[1]),
+)
+
 from run import percentile
 
 from scheduler.worker.runtime import Client
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "deploy"))
+sys.path.insert(
+    0,
+    str(Path(__file__).resolve().parents[1] / "demos"),
+)
+
 from demo import call
 
 
@@ -24,52 +32,114 @@ def main():
     parser.add_argument("--scheduler", default="http://127.0.0.1:8081")
     parser.add_argument("--clients", type=int, default=8)
     parser.add_argument("--tasks", type=int, default=1000)
-    parser.add_argument("--output", type=Path, default=Path("benchmarks/results/synthetic.json"))
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("benchmarks/results/synthetic.json"),
+    )
+
     args = parser.parse_args()
+
     job = call(
         args.api,
         "/v1/jobs",
         {
             "name": "synthetic-control-plane",
             "taskCount": args.tasks,
-            "payload": {"operation": "PRIME_COUNT", "fromInclusive": 2, "toExclusive": args.tasks + 2},
+            "payload": {
+                "operation": "PRIME_COUNT",
+                "fromInclusive": 2,
+                "toExclusive": args.tasks + 2,
+            },
         },
         str(uuid4()),
     )
 
     def client_run(_):
-        client, worker = Client(args.scheduler), str(uuid4())
+        client = Client(args.scheduler)
+        worker = str(uuid4())
+
         registration = client.post(
             "/internal/v1/workers/register",
-            {"workerId": worker, "hostname": "benchmark", "capacity": 1, "version": "1"},
+            {
+                "workerId": worker,
+                "hostname": "benchmark",
+                "capacity": 1,
+                "version": "1",
+            },
         )
-        beat_at, samples = 0, []
+
+        beat_at = 0
+        samples = []
+
         while True:
             if time.monotonic() >= beat_at:
-                client.post(f"/internal/v1/workers/{worker}/heartbeat", {"activeAttemptIds": []})
-                beat_at = time.monotonic() + registration["settings"]["heartbeatIntervalMs"] / 1000
+                client.post(
+                    f"/internal/v1/workers/{worker}/heartbeat",
+                    {"activeAttemptIds": []},
+                )
+                beat_at = (
+                    time.monotonic()
+                    + registration["settings"]["heartbeatIntervalMs"] / 1000
+                )
+
             start = time.monotonic()
-            a = client.post("/internal/v1/claims", {"workerId": worker, "claimRequestId": str(uuid4())})
-            claimed = time.monotonic()
-            if not a:
-                return samples
-            client.post(f"/internal/v1/attempts/{a['attemptId']}/start", {"workerId": worker})
-            before = time.monotonic()
-            # Return a minimal result so this benchmark measures protocol overhead only.
-            client.post(
-                f"/internal/v1/attempts/{a['attemptId']}/completion",
-                {"workerId": worker, "outcome": "SUCCEEDED", "result": {"primeCount": 0}},
+
+            assignment = client.post(
+                "/internal/v1/claims",
+                {
+                    "workerId": worker,
+                    "claimRequestId": str(uuid4()),
+                },
             )
-            samples.append({"claimSeconds": claimed - start, "completionSeconds": time.monotonic() - before})
+
+            claimed = time.monotonic()
+
+            if not assignment:
+                return samples
+
+            client.post(
+                f"/internal/v1/attempts/{assignment['attemptId']}/start",
+                {"workerId": worker},
+            )
+
+            before = time.monotonic()
+
+            # Minimal result isolates scheduler/protocol overhead from computation.
+            client.post(
+                f"/internal/v1/attempts/{assignment['attemptId']}/completion",
+                {
+                    "workerId": worker,
+                    "outcome": "SUCCEEDED",
+                    "result": {"primeCount": 0},
+                },
+            )
+
+            samples.append(
+                {
+                    "claimSeconds": claimed - start,
+                    "completionSeconds": time.monotonic() - before,
+                }
+            )
 
     started = time.monotonic()
+
     with ThreadPoolExecutor(max_workers=args.clients) as pool:
-        samples = [s for batch in pool.map(client_run, range(args.clients)) for s in batch]
+        samples = [
+            sample
+            for batch in pool.map(client_run, range(args.clients))
+            for sample in batch
+        ]
+
     elapsed = time.monotonic() - started
+
+    # Every task must be consumed by these synthetic clients for the sample to be valid.
     if len(samples) != args.tasks:
         raise RuntimeError(
-            "Competing real workers or unrelated work invalidated the sample; stop workers before this experiment"
+            "Competing real workers or unrelated work invalidated the sample; "
+            "stop workers before this experiment"
         )
+
     output = {
         "kind": "synthetic-not-compute",
         "jobId": job["id"],
@@ -78,15 +148,33 @@ def main():
         "confirmedCompletionsPerSecond": len(samples) / elapsed,
         "samples": samples,
     }
-    for key in ("claimSeconds", "completionSeconds"):
-        values = [s[key] for s in samples]
+
+    for key in (
+        "claimSeconds",
+        "completionSeconds",
+    ):
+        values = [
+            sample[key]
+            for sample in samples
+        ]
+
         output[key] = {
             "p50": statistics.median(values),
             "p95": percentile(values, 0.95),
             "p99": percentile(values, 0.99),
         }
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(output, indent=2))
+
+    args.output.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    args.output.write_text(
+        json.dumps(
+            output,
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

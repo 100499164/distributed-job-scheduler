@@ -46,7 +46,6 @@ select = ["E4", "E7", "E9", "F", "I"]
 [tool.ruff.lint.per-file-ignores]
 # Executable scripts first add the checkout root to sys.path.
 "benchmarks/*.py" = ["E402"]
-"deploy/*.py" = ["E402"]
 
 [tool.mypy]
 python_version = "3.12"
