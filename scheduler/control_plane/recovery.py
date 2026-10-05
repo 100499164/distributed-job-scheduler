@@ -16,7 +16,6 @@ from scheduler.persistence.database import Row
 
 
 class Recovery:
-
     def __init__(
         self,
         scheduler: Scheduler,
@@ -124,18 +123,11 @@ class Recovery:
             ):
                 reason = "WORKER_LOST"
 
-            elif (
-                attempt["execution_deadline_at"] is not None
-                and now >= attempt["execution_deadline_at"]
-            ):
+            elif attempt["execution_deadline_at"] is not None and now >= attempt["execution_deadline_at"]:
                 reason = "EXECUTION_TIMEOUT"
 
             elif now >= attempt["lease_expires_at"]:
-                reason = (
-                    "ASSIGNMENT_TIMEOUT"
-                    if attempt["status"] == "ASSIGNED"
-                    else "LEASE_EXPIRED"
-                )
+                reason = "ASSIGNMENT_TIMEOUT" if attempt["status"] == "ASSIGNED" else "LEASE_EXPIRED"
 
             else:
                 # The candidate may have been renewed while waiting for locks.
@@ -143,9 +135,7 @@ class Recovery:
 
             # Active task and attempt states must always move together.
             if task["status"] != attempt["status"]:
-                raise RuntimeError(
-                    "Active task/attempt invariant violation"
-                )
+                raise RuntimeError("Active task/attempt invariant violation")
 
             transition(
                 "attempt",
@@ -205,9 +195,7 @@ class Recovery:
         result = self.db.run(transaction)
 
         if result:
-            self.scheduler.metrics.expirations.labels(
-                result["reason"]
-            ).inc()
+            self.scheduler.metrics.expirations.labels(result["reason"]).inc()
 
             if result["new_state"] == "RETRY_WAIT":
                 self.scheduler.metrics.retries.inc()
@@ -235,9 +223,7 @@ class Recovery:
                     ORDER BY last_heartbeat_at, id
                     LIMIT 200
                     """,
-                    (
-                        self.settings.worker_timeout_ms,
-                    ),
+                    (self.settings.worker_timeout_ms,),
                 ).fetchall()
             )
 
@@ -245,9 +231,7 @@ class Recovery:
                 if self.stop and self.stop.is_set():
                     return
 
-                self.offline(
-                    worker["id"]
-                )
+                self.offline(worker["id"])
 
             # These are only candidate IDs. expire() revalidates everything
             # after taking the required locks.
@@ -269,9 +253,7 @@ class Recovery:
                     ORDER BY a.lease_expires_at, a.id
                     LIMIT 200
                     """,
-                    (
-                        self.settings.worker_timeout_ms,
-                    ),
+                    (self.settings.worker_timeout_ms,),
                 ).fetchall()
             )
 
@@ -279,9 +261,7 @@ class Recovery:
                 if self.stop and self.stop.is_set():
                     return
 
-                self.expire(
-                    attempt["id"]
-                )
+                self.expire(attempt["id"])
 
             # Detect active tasks that somehow lost their active attempt.
             corrupt = self.db.run(
@@ -310,6 +290,4 @@ class Recovery:
 
         finally:
             # Record sweep duration even if recovery exits early or fails.
-            self.scheduler.metrics.sweep.observe(
-                time.monotonic() - started
-            )
+            self.scheduler.metrics.sweep.observe(time.monotonic() - started)

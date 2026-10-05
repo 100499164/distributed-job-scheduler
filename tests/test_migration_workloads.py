@@ -26,13 +26,7 @@ def test_upgrade_original_schema_with_existing_job(
         dsn,
         autocommit=True,
     ) as connection:
-        connection.execute(
-            sql.SQL(
-                "CREATE SCHEMA {}"
-            ).format(
-                sql.Identifier(schema)
-            )
-        )
+        connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
 
     isolated = make_conninfo(
         dsn,
@@ -40,24 +34,16 @@ def test_upgrade_original_schema_with_existing_job(
     )
 
     migrations = database.MIGRATIONS
-    original = (
-        migrations / "001_initial.sql"
-    ).read_bytes()
+    original = (migrations / "001_initial.sql").read_bytes()
 
     # Historical migrations are immutable once published.
     assert (
-        hashlib.sha256(
-            original
-        ).hexdigest()
+        hashlib.sha256(original).hexdigest()
         == "cc41456ebc1374f87f2451363114773c578e50f0622aaebff8ae6b1a46da2983"
     )
 
     # Start from a real installation containing only migration 001.
-    (
-        tmp_path / "001_initial.sql"
-    ).write_bytes(
-        original
-    )
+    (tmp_path / "001_initial.sql").write_bytes(original)
 
     db = None
 
@@ -70,9 +56,7 @@ def test_upgrade_original_schema_with_existing_job(
 
         database.migrate(isolated)
 
-        db = database.Database(
-            isolated
-        )
+        db = database.Database(isolated)
 
         jobs = Jobs(
             db,
@@ -108,9 +92,7 @@ def test_upgrade_original_schema_with_existing_job(
         )
 
         # The original schema only allows PRIME_COUNT jobs.
-        with pytest.raises(
-            psycopg.errors.CheckViolation
-        ):
+        with pytest.raises(psycopg.errors.CheckViolation):
             db.run(
                 lambda c: c.execute(
                     """
@@ -145,10 +127,13 @@ def test_upgrade_original_schema_with_existing_job(
             False,
         )
 
-        assert jobs.list_tasks(
-            job["id"],
-            200,
-        ) == tasks
+        assert (
+            jobs.list_tasks(
+                job["id"],
+                200,
+            )
+            == tasks
+        )
 
         # Migration 001 remains recorded exactly as it was before the upgrade.
         assert (
@@ -187,9 +172,7 @@ def test_upgrade_original_schema_with_existing_job(
             )
 
         # Unsupported operations must still be rejected by the final schema.
-        with pytest.raises(
-            psycopg.errors.CheckViolation
-        ):
+        with pytest.raises(psycopg.errors.CheckViolation):
             db.run(
                 lambda c: c.execute(
                     """
@@ -209,13 +192,7 @@ def test_upgrade_original_schema_with_existing_job(
             dsn,
             autocommit=True,
         ) as connection:
-            connection.execute(
-                sql.SQL(
-                    "DROP SCHEMA {} CASCADE"
-                ).format(
-                    sql.Identifier(schema)
-                )
-            )
+            connection.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
 
 
 @pytest.mark.integration
@@ -238,13 +215,7 @@ def test_upgrade_002_preserves_existing_worker_and_active_assignment(
         dsn,
         autocommit=True,
     ) as connection:
-        connection.execute(
-            sql.SQL(
-                "CREATE SCHEMA {}"
-            ).format(
-                sql.Identifier(schema)
-            )
-        )
+        connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
 
     isolated = make_conninfo(
         dsn,
@@ -258,21 +229,11 @@ def test_upgrade_002_preserves_existing_worker_and_active_assignment(
         "001_initial.sql",
         "002_workloads.sql",
     ):
-        (
-            tmp_path / name
-        ).write_bytes(
-            (
-                migrations / name
-            ).read_bytes()
-        )
+        (tmp_path / name).write_bytes((migrations / name).read_bytes())
 
     # Migration 002 is part of the immutable published history.
     assert (
-        hashlib.sha256(
-            (
-                migrations / "002_workloads.sql"
-            ).read_bytes()
-        ).hexdigest()
+        hashlib.sha256((migrations / "002_workloads.sql").read_bytes()).hexdigest()
         == "cddb5d54f0d9c20db15ca04ddba7222ba09db36714ea95bd023025556d215bc7"
     )
 
@@ -287,9 +248,7 @@ def test_upgrade_002_preserves_existing_worker_and_active_assignment(
 
         database.migrate(isolated)
 
-        db = database.Database(
-            isolated
-        )
+        db = database.Database(isolated)
 
         jobs = Jobs(
             db,
@@ -390,17 +349,11 @@ def test_upgrade_002_preserves_existing_worker_and_active_assignment(
                 (job["id"],),
             )
 
-        db.run(
-            old_assignment
-        )
+        db.run(old_assignment)
 
-        before_task = jobs.task(
-            task["id"]
-        )
+        before_task = jobs.task(task["id"])
 
-        before_attempts = jobs.attempts(
-            task["id"]
-        )
+        before_attempts = jobs.attempts(task["id"])
 
         before_migrations = db.run(
             lambda c: c.execute(
@@ -425,20 +378,12 @@ def test_upgrade_002_preserves_existing_worker_and_active_assignment(
         assert db.ready()
 
         # Existing task and active-attempt state must survive unchanged.
-        assert jobs.task(
-            task["id"]
-        ) == before_task
+        assert jobs.task(task["id"]) == before_task
 
-        assert jobs.attempts(
-            task["id"]
-        ) == before_attempts
+        assert jobs.attempts(task["id"]) == before_attempts
 
         # Legacy workers gain support for every workload in this release.
-        assert jobs.worker(
-            worker
-        )["supportedOperations"] == list(
-            KNOWN_OPERATIONS
-        )
+        assert jobs.worker(worker)["supportedOperations"] == list(KNOWN_OPERATIONS)
 
         # Older migration records must not be rewritten during the upgrade.
         assert (
@@ -480,15 +425,11 @@ def test_upgrade_002_preserves_existing_worker_and_active_assignment(
             Completion(
                 workerId=worker,
                 outcome="SUCCEEDED",
-                result=execute(
-                    task["payload"]
-                ),
+                result=execute(task["payload"]),
             ),
         )
 
-        assert jobs.job(
-            job["id"]
-        )["status"] == "COMPLETED"
+        assert jobs.job(job["id"])["status"] == "COMPLETED"
 
     finally:
         if db:
@@ -498,10 +439,4 @@ def test_upgrade_002_preserves_existing_worker_and_active_assignment(
             dsn,
             autocommit=True,
         ) as connection:
-            connection.execute(
-                sql.SQL(
-                    "DROP SCHEMA {} CASCADE"
-                ).format(
-                    sql.Identifier(schema)
-                )
-            )
+            connection.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))

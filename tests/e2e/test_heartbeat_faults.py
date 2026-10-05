@@ -66,12 +66,7 @@ def test_suppress_heartbeats_while_old_calculation_stays_alive(cluster, db):
         final = eventually(
             lambda: (
                 result
-                if (
-                    result := get(
-                        cluster.api_url + "/v1/jobs/" + job["id"]
-                    )
-                )["status"]
-                == "COMPLETED"
+                if (result := get(cluster.api_url + "/v1/jobs/" + job["id"]))["status"] == "COMPLETED"
                 else None
             ),
             20,
@@ -84,12 +79,7 @@ def test_suppress_heartbeats_while_old_calculation_stays_alive(cluster, db):
 
         old.release_calculation.set()
 
-        eventually(
-            lambda: (
-                not old.slots
-                or old.stop.is_set()
-            )
-        )
+        eventually(lambda: (not old.slots or old.stop.is_set()))
 
         assert (
             db.run(
@@ -105,9 +95,7 @@ def test_suppress_heartbeats_while_old_calculation_stays_alive(cluster, db):
             == "EXPIRED"
         )
 
-        assert get(
-            cluster.api_url + "/v1/jobs/" + job["id"]
-        )["completedTasks"] == 1
+        assert get(cluster.api_url + "/v1/jobs/" + job["id"])["completedTasks"] == 1
 
     finally:
         old.stop.set()
@@ -123,9 +111,7 @@ def test_suppress_heartbeats_while_old_calculation_stays_alive(cluster, db):
     indirect=True,
 )
 def test_healthy_process_with_stalled_calculation_hits_absolute_deadline(cluster, db):
-    old = BlockedWorker(
-        cluster.scheduler_url
-    )
+    old = BlockedWorker(cluster.scheduler_url)
 
     thread = threading.Thread(
         target=old.run,
@@ -156,10 +142,13 @@ def test_healthy_process_with_stalled_calculation_hits_absolute_deadline(cluster
                 ).fetchone()
             )
 
-        assert eventually(
-            expired,
-            10,
-        )["error_code"] == "EXECUTION_TIMEOUT"
+        assert (
+            eventually(
+                expired,
+                10,
+            )["error_code"]
+            == "EXECUTION_TIMEOUT"
+        )
 
         # The process is still healthy; only the attempt exceeded its deadline.
         assert (
@@ -180,19 +169,12 @@ def test_healthy_process_with_stalled_calculation_hits_absolute_deadline(cluster
         old.release_calculation.set()
         thread.join(10)
 
-        cluster.worker(
-            "healthy-after-deadline"
-        )
+        cluster.worker("healthy-after-deadline")
 
         result = eventually(
             lambda: (
                 current
-                if (
-                    current := get(
-                        cluster.api_url + "/v1/jobs/" + job["id"]
-                    )
-                )["status"]
-                == "COMPLETED"
+                if (current := get(cluster.api_url + "/v1/jobs/" + job["id"]))["status"] == "COMPLETED"
                 else None
             ),
             20,

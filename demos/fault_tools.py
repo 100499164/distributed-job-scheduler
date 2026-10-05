@@ -29,10 +29,7 @@ def kill_registered_worker(worker_id, compose=docker, service="worker"):
             except ValueError:
                 continue
 
-            if (
-                event.get("event") == "worker_registered"
-                and event.get("worker_id") == worker_id
-            ):
+            if event.get("event") == "worker_registered" and event.get("worker_id") == worker_id:
                 print(
                     f"Killing worker {worker_id} ({container})",
                     flush=True,
@@ -43,9 +40,7 @@ def kill_registered_worker(worker_id, compose=docker, service="worker"):
                 )
                 return container
 
-    raise RuntimeError(
-        "Could not map the selected worker identity to a container"
-    )
+    raise RuntimeError("Could not map the selected worker identity to a container")
 
 
 def reject_stale_completion(attempt, result=None, compose=docker):
@@ -91,8 +86,6 @@ except HTTPError as exc:
             script,
             attempt["id"],
             attempt["workerId"],
-            json.dumps(
-                result or {"primeCount": 0}
-            ),
+            json.dumps(result or {"primeCount": 0}),
         )
     )

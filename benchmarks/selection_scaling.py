@@ -34,9 +34,7 @@ class CountedConnection:
 
 
 def fixture(c, jobs, tasks_per_job, history):
-    c.execute(
-        "TRUNCATE task_attempts, tasks, jobs, workers CASCADE"
-    )
+    c.execute("TRUNCATE task_attempts, tasks, jobs, workers CASCADE")
 
     c.execute(
         """
@@ -184,15 +182,11 @@ def fixture(c, jobs, tasks_per_job, history):
         "tasks",
         "task_attempts",
     ):
-        c.execute(
-            "ANALYZE " + table
-        )
+        c.execute("ANALYZE " + table)
 
 
 def measure(c, blocker, jobs, samples, warmups, locked_jobs):
-    with blocker.transaction(
-        force_rollback=True
-    ):
+    with blocker.transaction(force_rollback=True):
         if locked_jobs:
             blocker.execute(
                 """
@@ -202,23 +196,14 @@ def measure(c, blocker, jobs, samples, warmups, locked_jobs):
                   AND status = 'QUEUED'
                 FOR UPDATE
                 """,
-                (
-                    [
-                        job["id"]
-                        for job in jobs[:locked_jobs]
-                    ],
-                ),
+                ([job["id"] for job in jobs[:locked_jobs]],),
             ).fetchall()
 
         durations = []
         queries = []
 
-        for index in range(
-            warmups + samples
-        ):
-            with c.transaction(
-                force_rollback=True
-            ):
+        for index in range(warmups + samples):
+            with c.transaction(force_rollback=True):
                 counted = CountedConnection(c)
                 started = time.perf_counter_ns()
 
@@ -231,55 +216,29 @@ def measure(c, blocker, jobs, samples, warmups, locked_jobs):
                     ["RANGE_SUM"],
                 )
 
-                duration = (
-                    time.perf_counter_ns()
-                    - started
-                ) / 1_000_000
+                duration = (time.perf_counter_ns() - started) / 1_000_000
 
                 assert selected is not None
-                assert (
-                    selected["job_id"]
-                    == jobs[locked_jobs]["id"]
-                )
-                assert (
-                    counted.queries
-                    == locked_jobs + 2
-                )
+                assert selected["job_id"] == jobs[locked_jobs]["id"]
+                assert counted.queries == locked_jobs + 2
 
             if index >= warmups:
-                durations.append(
-                    duration
-                )
-                queries.append(
-                    counted.queries
-                )
+                durations.append(duration)
+                queries.append(counted.queries)
 
         return {
             "locked_jobs": locked_jobs,
             "samples": samples,
             "warmups": warmups,
-            "p50_ms": statistics.median(
-                durations
-            ),
-            "p95_ms": sorted(
-                durations
-            )[
-                math.ceil(
-                    0.95 * samples
-                )
-                - 1
-            ],
-            "queries_per_selection": sorted(
-                set(queries)
-            ),
+            "p50_ms": statistics.median(durations),
+            "p95_ms": sorted(durations)[math.ceil(0.95 * samples) - 1],
+            "queries_per_selection": sorted(set(queries)),
             "samples_ms": durations,
         }
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description=__doc__
-    )
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--jobs",
         type=int,
@@ -309,22 +268,13 @@ def main():
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path(
-            "verification/selection-scaling.json"
-        ),
+        default=Path("verification/selection-scaling.json"),
     )
 
     args = parser.parse_args()
 
-    if (
-        min(args.jobs) < 2
-        or args.tasks_per_job < 2
-        or args.samples < 2
-        or args.warmups < 0
-    ):
-        parser.error(
-            "Require >=2 jobs, tasks/job and samples; warmups >=0"
-        )
+    if min(args.jobs) < 2 or args.tasks_per_job < 2 or args.samples < 2 or args.warmups < 0:
+        parser.error("Require >=2 jobs, tasks/job and samples; warmups >=0")
 
     image = "postgres:17.6-alpine3.22"
 
@@ -341,9 +291,7 @@ def main():
         "results": [],
     }
 
-    with PostgresContainer(
-        image
-    ) as postgres:
+    with PostgresContainer(image) as postgres:
         dsn = postgres.get_connection_url().replace(
             "postgresql+psycopg2://",
             "postgresql://",
@@ -363,14 +311,10 @@ def main():
                 row_factory=dict_row,
             ) as blocker,
         ):
-            report["environment"]["postgres_version"] = c.execute(
-                "SELECT version() AS v"
-            ).fetchone()["v"]
+            report["environment"]["postgres_version"] = c.execute("SELECT version() AS v").fetchone()["v"]
 
             report["environment"]["settings"] = {
-                name: c.execute(
-                    "SHOW " + name
-                ).fetchone()[name]
+                name: c.execute("SHOW " + name).fetchone()[name]
                 for name in (
                     "shared_buffers",
                     "work_mem",
@@ -405,15 +349,8 @@ def main():
                     ):
                         result = {
                             "jobs": count,
-                            "tasks": (
-                                count
-                                * args.tasks_per_job
-                            ),
-                            "historical_attempts": (
-                                count
-                                if history
-                                else 0
-                            ),
+                            "tasks": (count * args.tasks_per_job),
+                            "historical_attempts": (count if history else 0),
                             **measure(
                                 c,
                                 blocker,
@@ -424,18 +361,10 @@ def main():
                             ),
                         }
 
-                        report["results"].append(
-                            result
-                        )
+                        report["results"].append(result)
 
                         print(
-                            json.dumps(
-                                {
-                                    key: value
-                                    for key, value in result.items()
-                                    if key != "samples_ms"
-                                }
-                            ),
+                            json.dumps({key: value for key, value in result.items() if key != "samples_ms"}),
                             flush=True,
                         )
 

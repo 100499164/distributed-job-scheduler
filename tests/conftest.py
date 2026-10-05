@@ -31,11 +31,7 @@ def db(dsn):
     database = Database(dsn)
 
     # Tests share the same database, so start each one from an empty state.
-    database.run(
-        lambda c: c.execute(
-            "TRUNCATE task_attempts,tasks,workers,jobs"
-        )
-    )
+    database.run(lambda c: c.execute("TRUNCATE task_attempts,tasks,workers,jobs"))
 
     yield database
 

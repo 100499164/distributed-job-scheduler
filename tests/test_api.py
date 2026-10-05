@@ -41,10 +41,7 @@ def test_http_contracts(db, dsn):
         )
 
         assert invalid.status_code == 400
-        assert (
-            invalid.json()["requestId"]
-            == invalid.headers["x-request-id"]
-        )
+        assert invalid.json()["requestId"] == invalid.headers["x-request-id"]
 
         response = client.post(
             "/v1/jobs",
@@ -53,10 +50,7 @@ def test_http_contracts(db, dsn):
         )
 
         assert response.status_code == 201
-        assert (
-            response.headers["location"]
-            == "/v1/jobs/" + response.json()["id"]
-        )
+        assert response.headers["location"] == "/v1/jobs/" + response.json()["id"]
 
         # Replaying the same idempotent request returns the existing job.
         assert (
@@ -68,38 +62,36 @@ def test_http_contracts(db, dsn):
             == 200
         )
 
-        assert (
-            client.get(
-                response.headers["location"]
-            ).json()["taskCount"]
-            == 3
-        )
+        assert client.get(response.headers["location"]).json()["taskCount"] == 3
 
         # Public API validation and protocol boundaries.
-        assert client.get(
-            "/v1/jobs?limit=201"
-        ).status_code == 400
+        assert client.get("/v1/jobs?limit=201").status_code == 400
 
-        assert client.post(
-            "/v1/jobs",
-            content=b"x" * 65537,
-        ).status_code == 413
+        assert (
+            client.post(
+                "/v1/jobs",
+                content=b"x" * 65537,
+            ).status_code
+            == 413
+        )
 
-        assert client.post(
-            "/v1/jobs",
-            content='{"name":"a","name":"b"}',
-        ).status_code == 400
+        assert (
+            client.post(
+                "/v1/jobs",
+                content='{"name":"a","name":"b"}',
+            ).status_code
+            == 400
+        )
 
-        assert client.get(
-            "/v1/jobs/not-a-uuid"
-        ).status_code == 400
+        assert client.get("/v1/jobs/not-a-uuid").status_code == 400
 
         # Internal scheduler endpoints are not exposed by the API role.
-        assert client.post(
-            "/internal/v1/claims",
-            json={},
-        ).status_code == 404
+        assert (
+            client.post(
+                "/internal/v1/claims",
+                json={},
+            ).status_code
+            == 404
+        )
 
-        assert client.get(
-            "/metrics"
-        ).status_code == 200
+        assert client.get("/metrics").status_code == 200

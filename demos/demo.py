@@ -30,9 +30,7 @@ def sequential(end):
 
     for n in range(2, int(end**0.5) + 1):
         if sieve[n]:
-            sieve[n * n : end : n] = b"\x00" * len(
-                range(n * n, end, n)
-            )
+            sieve[n * n : end : n] = b"\x00" * len(range(n * n, end, n))
 
     return sum(sieve)
 
@@ -47,10 +45,7 @@ def main():
     args = parser.parse_args()
 
     if not 3 <= args.end <= 50_000_000:
-        parser.error(
-            "Demo sieve supports --end 3..50000000; "
-            "the service allows up to 1e9"
-        )
+        parser.error("Demo sieve supports --end 3..50000000; the service allows up to 1e9")
 
     body = {
         "name": "python-mvp-demo",
@@ -72,12 +67,15 @@ def main():
     )
 
     # Replaying the same request must preserve job identity.
-    assert call(
-        args.api,
-        "/v1/jobs",
-        body,
-        key,
-    )["id"] == job["id"]
+    assert (
+        call(
+            args.api,
+            "/v1/jobs",
+            body,
+            key,
+        )["id"]
+        == job["id"]
+    )
 
     print(
         json.dumps(
@@ -112,18 +110,13 @@ def main():
             last = progress
 
         if job["status"] == "FAILED":
-            raise SystemExit(
-                "Job failed; inspect task attempts and their errorCode"
-            )
+            raise SystemExit("Job failed; inspect task attempts and their errorCode")
 
         if job["status"] == "COMPLETED":
             # Verify the distributed result with an independent algorithm.
             expected = sequential(args.end)
 
-            assert (
-                job["result"]["totalPrimeCount"]
-                == expected
-            )
+            assert job["result"]["totalPrimeCount"] == expected
 
             print(
                 json.dumps(

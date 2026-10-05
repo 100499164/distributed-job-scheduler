@@ -29,9 +29,7 @@ def test_only_listed_running_attempts_renew_and_deadline_caps(db):
     scheduler, jobs, job, [(worker, assignment)] = setup_job(db)
     attempt_id = assignment["attemptId"]
 
-    heartbeat = Heartbeat(
-        activeAttemptIds=[attempt_id]
-    )
+    heartbeat = Heartbeat(activeAttemptIds=[attempt_id])
 
     # Assigned attempts cannot renew their lease until they are running.
     assert (
@@ -42,12 +40,7 @@ def test_only_listed_running_attempts_renew_and_deadline_caps(db):
         == "NOT_RUNNING"
     )
 
-    assert (
-        jobs.attempts(
-            assignment["taskId"]
-        )["items"][0]["leaseExpiresAt"]
-        == assignment["leaseExpiresAt"]
-    )
+    assert jobs.attempts(assignment["taskId"])["items"][0]["leaseExpiresAt"] == assignment["leaseExpiresAt"]
 
     initial = scheduler.start(
         attempt_id,
@@ -60,22 +53,14 @@ def test_only_listed_running_attempts_renew_and_deadline_caps(db):
         Heartbeat(activeAttemptIds=[]),
     )
 
-    assert (
-        jobs.attempts(
-            assignment["taskId"]
-        )["items"][0]["leaseExpiresAt"]
-        == initial["leaseExpiresAt"]
-    )
+    assert jobs.attempts(assignment["taskId"])["items"][0]["leaseExpiresAt"] == initial["leaseExpiresAt"]
 
     response = scheduler.heartbeat(
         worker,
         heartbeat,
     )
 
-    assert (
-        response["renewed"][0]["leaseExpiresAt"]
-        > initial["leaseExpiresAt"]
-    )
+    assert response["renewed"][0]["leaseExpiresAt"] > initial["leaseExpiresAt"]
 
     deadline = db.run(
         lambda c: c.execute(
@@ -119,9 +104,7 @@ def test_expired_unrecovered_lease_rejects_start_completion_and_renewal(db):
     assert (
         scheduler.heartbeat(
             worker,
-            Heartbeat(
-                activeAttemptIds=[attempt_id]
-            ),
+            Heartbeat(activeAttemptIds=[attempt_id]),
         )["rejected"][0]["reason"]
         == "EXPIRED"
     )
@@ -141,9 +124,7 @@ def test_expired_unrecovered_lease_rejects_start_completion_and_renewal(db):
             ),
         )
 
-    assert jobs.job(
-        job["id"]
-    )["completedTasks"] == 0
+    assert jobs.job(job["id"])["completedTasks"] == 0
 
 
 def test_foreign_and_unknown_attempts_are_not_renewed(db):
@@ -159,11 +140,7 @@ def test_foreign_and_unknown_attempts_are_not_renewed(db):
     assert (
         scheduler.heartbeat(
             worker,
-            Heartbeat(
-                activeAttemptIds=[
-                    other_assignment["attemptId"]
-                ]
-            ),
+            Heartbeat(activeAttemptIds=[other_assignment["attemptId"]]),
         )["rejected"][0]["reason"]
         == "WRONG_OWNER"
     )
@@ -172,9 +149,7 @@ def test_foreign_and_unknown_attempts_are_not_renewed(db):
     assert (
         scheduler.heartbeat(
             worker,
-            Heartbeat(
-                activeAttemptIds=[uuid4()]
-            ),
+            Heartbeat(activeAttemptIds=[uuid4()]),
         )["rejected"][0]["reason"]
         == "UNKNOWN_ATTEMPT"
     )

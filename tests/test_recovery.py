@@ -63,23 +63,15 @@ def test_recover_dead_worker_and_reject_old_result(db):
     recovery = Recovery(scheduler)
     recovery.sweep()
 
-    assert jobs.worker(
-        worker
-    )["status"] == "OFFLINE"
+    assert jobs.worker(worker)["status"] == "OFFLINE"
 
-    assert jobs.task(
-        assignment["taskId"]
-    )["status"] == "RETRY_WAIT"
+    assert jobs.task(assignment["taskId"])["status"] == "RETRY_WAIT"
 
-    assert jobs.attempts(
-        assignment["taskId"]
-    )["items"][0]["errorCode"] == "WORKER_LOST"
+    assert jobs.attempts(assignment["taskId"])["items"][0]["errorCode"] == "WORKER_LOST"
 
     eligible(db)
 
-    new_worker = register(
-        scheduler
-    )
+    new_worker = register(scheduler)
 
     new_assignment = scheduler.claim(
         Claim(
@@ -113,9 +105,7 @@ def test_recover_dead_worker_and_reject_old_result(db):
         ),
     )
 
-    assert jobs.job(
-        job["id"]
-    )["result"]["totalPrimeCount"] == 25
+    assert jobs.job(job["id"])["result"]["totalPrimeCount"] == 25
 
 
 def test_transient_retry_permanent_failure_and_no_fail_fast(db):
@@ -145,9 +135,7 @@ def test_transient_retry_permanent_failure_and_no_fail_fast(db):
         failure,
     )
 
-    assert jobs.task(
-        assignment["taskId"]
-    )["status"] == "RETRY_WAIT"
+    assert jobs.task(assignment["taskId"])["status"] == "RETRY_WAIT"
 
     eligible(db)
 
@@ -164,10 +152,13 @@ def test_transient_retry_permanent_failure_and_no_fail_fast(db):
     )
 
     # Historical completion responses remain replayable.
-    assert scheduler.complete(
-        assignment["attemptId"],
-        failure,
-    )["status"] == "FAILED"
+    assert (
+        scheduler.complete(
+            assignment["attemptId"],
+            failure,
+        )["status"]
+        == "FAILED"
+    )
 
     # Permanent failures consume the task without scheduling another retry.
     scheduler.complete(
@@ -183,9 +174,7 @@ def test_transient_retry_permanent_failure_and_no_fail_fast(db):
     )
 
     # One failed task does not fail the whole job while other tasks are active.
-    assert jobs.job(
-        job["id"]
-    )["status"] == "RUNNING"
+    assert jobs.job(job["id"])["status"] == "RUNNING"
 
     second_worker, second_assignment = pairs[1]
 
@@ -202,20 +191,11 @@ def test_transient_retry_permanent_failure_and_no_fail_fast(db):
         ),
     )
 
-    final = jobs.job(
-        job["id"]
-    )
+    final = jobs.job(job["id"])
 
-    assert (
-        final["status"] == "FAILED"
-        and final["result"] is None
-    )
+    assert final["status"] == "FAILED" and final["result"] is None
 
-    assert (
-        final["failedTasks"]
-        == final["completedTasks"]
-        == 1
-    )
+    assert final["failedTasks"] == final["completedTasks"] == 1
 
 
 def test_assignment_loss_with_zero_retries(db):
@@ -236,9 +216,7 @@ def test_assignment_loss_with_zero_retries(db):
         "zero",
     )
 
-    worker = register(
-        scheduler
-    )
+    worker = register(scheduler)
 
     assignment = scheduler.claim(
         Claim(
@@ -258,25 +236,17 @@ def test_assignment_loss_with_zero_retries(db):
         )
     )
 
-    recovery = Recovery(
-        scheduler
-    )
+    recovery = Recovery(scheduler)
 
     # Running recovery repeatedly must be safe.
     recovery.sweep()
     recovery.sweep()
 
-    assert jobs.job(
-        job["id"]
-    )["status"] == "FAILED"
+    assert jobs.job(job["id"])["status"] == "FAILED"
 
-    assert jobs.job(
-        job["id"]
-    )["failedTasks"] == 1
+    assert jobs.job(job["id"])["failedTasks"] == 1
 
-    assert jobs.attempts(
-        assignment["taskId"]
-    )["items"][0]["errorCode"] == "ASSIGNMENT_TIMEOUT"
+    assert jobs.attempts(assignment["taskId"])["items"][0]["errorCode"] == "ASSIGNMENT_TIMEOUT"
 
 
 def test_recovery_interrupted_is_resumable(db):
@@ -300,17 +270,13 @@ def test_recovery_interrupted_is_resumable(db):
             closures += 1
 
             if closures == 2:
-                raise RuntimeError(
-                    "scheduler interrupted"
-                )
+                raise RuntimeError("scheduler interrupted")
 
     scheduler.hook = interrupt
 
     # Recovery may partially commit before the process is interrupted.
     with pytest.raises(RuntimeError):
-        Recovery(
-            scheduler
-        ).sweep()
+        Recovery(scheduler).sweep()
 
     assert (
         db.run(
@@ -328,9 +294,7 @@ def test_recovery_interrupted_is_resumable(db):
     scheduler.hook = lambda *args: None
 
     # A later sweep must safely continue from the persisted state.
-    Recovery(
-        scheduler
-    ).sweep()
+    Recovery(scheduler).sweep()
 
     assert (
         db.run(
@@ -362,24 +326,16 @@ def test_heartbeat_competing_with_offline_cannot_resurrect(db):
         with pytest.raises(Conflict):
             scheduler.heartbeat(
                 worker,
-                Heartbeat(
-                    activeAttemptIds=[]
-                ),
+                Heartbeat(activeAttemptIds=[]),
             )
 
     def offline():
         barrier.wait(timeout=10)
 
-        Recovery(
-            scheduler
-        ).offline(
-            worker
-        )
+        Recovery(scheduler).offline(worker)
 
     # Heartbeat and recovery race over the same worker state.
-    with ThreadPoolExecutor(
-        max_workers=2
-    ) as pool:
+    with ThreadPoolExecutor(max_workers=2) as pool:
         futures = [
             pool.submit(heartbeat),
             pool.submit(offline),
@@ -389,9 +345,7 @@ def test_heartbeat_competing_with_offline_cannot_resurrect(db):
             future.result(timeout=15)
 
     # Once recovery marks the worker offline, heartbeat cannot resurrect it.
-    assert jobs.worker(
-        worker
-    )["status"] == "OFFLINE"
+    assert jobs.worker(worker)["status"] == "OFFLINE"
 
 
 def test_completion_against_expiration_has_one_closure(db):
@@ -424,16 +378,10 @@ def test_completion_against_expiration_has_one_closure(db):
     def expire():
         barrier.wait(timeout=10)
 
-        Recovery(
-            scheduler
-        ).expire(
-            assignment["attemptId"]
-        )
+        Recovery(scheduler).expire(assignment["attemptId"])
 
     # Completion and expiration race, but only one closure may win.
-    with ThreadPoolExecutor(
-        max_workers=2
-    ) as pool:
+    with ThreadPoolExecutor(max_workers=2) as pool:
         futures = [
             pool.submit(finish),
             pool.submit(expire),
@@ -442,10 +390,6 @@ def test_completion_against_expiration_has_one_closure(db):
         for future in futures:
             future.result(timeout=15)
 
-    assert jobs.task(
-        assignment["taskId"]
-    )["status"] == "RETRY_WAIT"
+    assert jobs.task(assignment["taskId"])["status"] == "RETRY_WAIT"
 
-    assert jobs.job(
-        job["id"]
-    )["completedTasks"] == 0
+    assert jobs.job(job["id"])["completedTasks"] == 0

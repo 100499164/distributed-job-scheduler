@@ -25,16 +25,17 @@ def range_partitions(
     start = payload.from_inclusive
 
     # Split the original interval into contiguous, non-overlapping partitions.
-    for index, size in enumerate(
-        partition_sizes(payload.work_units, count)
-    ):
+    for index, size in enumerate(partition_sizes(payload.work_units, count)):
         end = start + size
 
-        yield index, {
-            "operation": payload.operation,
-            "fromInclusive": start,
-            "toExclusive": end,
-        }
+        yield (
+            index,
+            {
+                "operation": payload.operation,
+                "fromInclusive": start,
+                "toExclusive": end,
+            },
+        )
 
         start = end
 
@@ -55,9 +56,7 @@ def partition_sizes(
 
 def partition_seed(seed: int, index: int) -> int:
     # Derive a deterministic, independent seed for each partition.
-    digest = hashlib.sha256(
-        f"monte-carlo-pi:v1:{seed}:{index}".encode("ascii")
-    ).digest()
+    digest = hashlib.sha256(f"monte-carlo-pi:v1:{seed}:{index}".encode("ascii")).digest()
 
     return int.from_bytes(digest[:8], "big") >> 11
 
@@ -68,9 +67,7 @@ def monte_carlo_partitions(
 ) -> Iterator[tuple[int, dict[str, str | int]]]:
     assert isinstance(payload, MonteCarloPayload)
 
-    for index, samples in enumerate(
-        partition_sizes(payload.samples, count)
-    ):
+    for index, samples in enumerate(partition_sizes(payload.samples, count)):
         yield (
             index,
             {
@@ -122,31 +119,19 @@ def validate_monte_carlo(
 
     # The worker must report exactly the number of assigned samples.
     if result.samples != payload.samples:
-        raise ValueError(
-            "samples must match the assigned partition"
-        )
+        raise ValueError("samples must match the assigned partition")
 
 
 def reduce_prime(
     results: Iterable[Mapping[str, int]],
 ) -> dict[str, int | float]:
-    return {
-        "totalPrimeCount": sum(
-            result["primeCount"]
-            for result in results
-        )
-    }
+    return {"totalPrimeCount": sum(result["primeCount"] for result in results)}
 
 
 def reduce_sum(
     results: Iterable[Mapping[str, int]],
 ) -> dict[str, int | float]:
-    return {
-        "totalSum": sum(
-            result["rangeSum"]
-            for result in results
-        )
-    }
+    return {"totalSum": sum(result["rangeSum"] for result in results)}
 
 
 def reduce_monte_carlo(
@@ -167,17 +152,9 @@ def reduce_monte_carlo(
 
 @dataclass(frozen=True)
 class Workload:
-    payload_type: (
-        type[PrimePayload]
-        | type[RangeSumPayload]
-        | type[MonteCarloPayload]
-    )
+    payload_type: type[PrimePayload] | type[RangeSumPayload] | type[MonteCarloPayload]
 
-    result_type: (
-        type[PrimeCountResult]
-        | type[RangeSumResult]
-        | type[MonteCarloResult]
-    )
+    result_type: type[PrimeCountResult] | type[RangeSumResult] | type[MonteCarloResult]
 
     partition: Callable[
         [Payload, int],
@@ -201,9 +178,7 @@ class Workload:
     ) -> None:
         # Result type must match the workload that produced the task.
         if type(result) is not self.result_type:
-            raise ValueError(
-                "Result schema does not match task operation"
-            )
+            raise ValueError("Result schema does not match task operation")
 
         self.validate(
             self.payload_type.model_validate(payload),
@@ -219,7 +194,6 @@ WORKLOADS = {
         validate_prime,
         reduce_prime,
     ),
-
     "RANGE_SUM": Workload(
         RangeSumPayload,
         RangeSumResult,
@@ -227,7 +201,6 @@ WORKLOADS = {
         validate_sum,
         reduce_sum,
     ),
-
     "MONTE_CARLO_PI": Workload(
         MonteCarloPayload,
         MonteCarloResult,
@@ -247,18 +220,14 @@ def workload(operation: str) -> Workload:
         return WORKLOADS[operation]
 
     except (KeyError, TypeError):
-        raise UnsupportedOperation(
-            "Unsupported workload operation"
-        ) from None
+        raise UnsupportedOperation("Unsupported workload operation") from None
 
 
 def partitions(
     payload: Payload,
     count: int,
 ) -> Iterable[tuple[int, dict[str, str | int]]]:
-    return workload(
-        payload.operation
-    ).partition(
+    return workload(payload.operation).partition(
         payload,
         count,
     )

@@ -45,9 +45,7 @@ def test_small_later_job_runs_before_large_finishes(db):
             worker,
         )
 
-        order.append(
-            assignment["jobId"]
-        )
+        order.append(assignment["jobId"])
 
         finish(
             scheduler,
@@ -56,18 +54,18 @@ def test_small_later_job_runs_before_large_finishes(db):
         )
 
     # Fairness alternates between eligible jobs instead of draining the large one first.
-    assert order == [
-        small["id"],
-        large["id"],
-    ] * 4
+    assert (
+        order
+        == [
+            small["id"],
+            large["id"],
+        ]
+        * 4
+    )
 
-    assert jobs.job(
-        small["id"]
-    )["status"] == "COMPLETED"
+    assert jobs.job(small["id"])["status"] == "COMPLETED"
 
-    assert jobs.job(
-        large["id"]
-    )["completedTasks"] == 5
+    assert jobs.job(large["id"])["completedTasks"] == 5
 
 
 def test_three_jobs_round_robin_survives_scheduler_reconstruction(db):
@@ -101,32 +99,26 @@ def test_three_jobs_round_robin_survives_scheduler_reconstruction(db):
             claimRequestId=uuid4(),
         )
 
-        assignment = scheduler.claim(
-            request
-        )
+        assignment = scheduler.claim(request)
 
         # Replaying the same claim must not consume another fairness turn.
-        assert scheduler.claim(
-            request
-        ) == assignment
+        assert scheduler.claim(request) == assignment
 
-        order.append(
-            assignment["jobId"]
-        )
+        order.append(assignment["jobId"])
 
-    assert order == [
-        created_job["id"]
-        for created_job in created
-    ] * 3
+    assert order == [created_job["id"] for created_job in created] * 3
 
-    assert db.run(
-        lambda c: c.execute(
-            """
+    assert (
+        db.run(
+            lambda c: c.execute(
+                """
             SELECT count(*) AS n
             FROM task_attempts
             """
-        ).fetchone()
-    )["n"] == 9
+            ).fetchone()
+        )["n"]
+        == 9
+    )
 
 
 def test_locked_tasks_do_not_hide_other_jobs_and_backoff_is_respected(db):
@@ -160,16 +152,22 @@ def test_locked_tasks_do_not_hide_other_jobs_and_backoff_is_respected(db):
             (first["id"],),
         )
 
-        assert claim(
-            scheduler,
-            worker,
-        )["jobId"] == later["id"]
+        assert (
+            claim(
+                scheduler,
+                worker,
+            )["jobId"]
+            == later["id"]
+        )
 
     # Once the lock is released, the first job becomes selectable again.
-    assert claim(
-        scheduler,
-        worker,
-    )["jobId"] == first["id"]
+    assert (
+        claim(
+            scheduler,
+            worker,
+        )["jobId"]
+        == first["id"]
+    )
 
 
 def test_incompatible_jobs_do_not_block_supported_work(db):
@@ -194,10 +192,13 @@ def test_incompatible_jobs_do_not_block_supported_work(db):
     )
 
     # Unsupported work must not block a compatible job behind it.
-    assert claim(
-        scheduler,
-        worker,
-    )["jobId"] == supported["id"]
+    assert (
+        claim(
+            scheduler,
+            worker,
+        )["jobId"]
+        == supported["id"]
+    )
 
 
 def test_assignment_rollback_does_not_consume_fairness_turn(db):
@@ -211,9 +212,7 @@ def test_assignment_rollback_does_not_consume_fairness_turn(db):
 
     def fail(name, connection):
         if name == "claim_before_commit":
-            raise RuntimeError(
-                "rollback"
-            )
+            raise RuntimeError("rollback")
 
     scheduler.hook = fail
 
@@ -239,7 +238,10 @@ def test_assignment_rollback_does_not_consume_fairness_turn(db):
         assignment,
     )
 
-    assert claim(
-        scheduler,
-        worker,
-    )["jobId"] == second["id"]
+    assert (
+        claim(
+            scheduler,
+            worker,
+        )["jobId"]
+        == second["id"]
+    )

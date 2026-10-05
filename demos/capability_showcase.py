@@ -80,11 +80,7 @@ def recovery(api, compose):
 
     old = wait_for(
         lambda: next(
-            (
-                attempt
-                for attempt in history()
-                if attempt["status"] == "RUNNING"
-            ),
+            (attempt for attempt in history() if attempt["status"] == "RUNNING"),
             None,
         ),
         description="pi worker RUNNING",
@@ -116,8 +112,7 @@ def recovery(api, compose):
             (
                 attempt
                 for attempt in history()
-                if attempt["id"] == old["id"]
-                and attempt["status"] == "EXPIRED"
+                if attempt["id"] == old["id"] and attempt["status"] == "EXPIRED"
             ),
             None,
         ),
@@ -153,11 +148,7 @@ def recovery(api, compose):
 
     new = wait_for(
         lambda: next(
-            (
-                attempt
-                for attempt in history()
-                if attempt["attemptNumber"] > old["attemptNumber"]
-            ),
+            (attempt for attempt in history() if attempt["attemptNumber"] > old["attemptNumber"]),
             None,
         ),
         description="generalist assignment",
@@ -174,8 +165,7 @@ def recovery(api, compose):
     )
 
     require(
-        set(replacement["supportedOperations"])
-        == {"PRIME_COUNT", "RANGE_SUM", "MONTE_CARLO_PI"},
+        set(replacement["supportedOperations"]) == {"PRIME_COUNT", "RANGE_SUM", "MONTE_CARLO_PI"},
         "Expected generalist",
     )
 
@@ -191,8 +181,7 @@ def recovery(api, compose):
     result = final["result"]
 
     require(
-        result["samples"] == payload["samples"]
-        and 0 <= result["insideCircle"] <= result["samples"],
+        result["samples"] == payload["samples"] and 0 <= result["insideCircle"] <= result["samples"],
         "Invalid sample accounting",
     )
 
@@ -232,14 +221,12 @@ def recovery(api, compose):
     )
 
     require(
-        history()[0]["status"] == "EXPIRED"
-        and call(api, "/v1/jobs/" + job["id"])["result"] == result,
+        history()[0]["status"] == "EXPIRED" and call(api, "/v1/jobs/" + job["id"])["result"] == result,
         "Stale completion changed canonical state",
     )
 
     print(
-        f"Recovery verified: pi specialist → generalist, result={result}; "
-        "stale completion rejected.",
+        f"Recovery verified: pi specialist → generalist, result={result}; stale completion rejected.",
         flush=True,
     )
 
@@ -336,9 +323,7 @@ def run(api, compose):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description=__doc__
-    )
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--port",
         type=int,
@@ -347,22 +332,15 @@ def main():
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path(
-            "verification/capability-showcase.json"
-        ),
+        default=Path("verification/capability-showcase.json"),
     )
 
     args = parser.parse_args()
 
     if not 1 <= args.port <= 65535:
-        parser.error(
-            "--port must be in 1..65535"
-        )
+        parser.error("--port must be in 1..65535")
 
-    project = (
-        "capability-showcase-"
-        + uuid4().hex[:8]
-    )
+    project = "capability-showcase-" + uuid4().hex[:8]
 
     def compose(*command):
         return subprocess.check_output(
@@ -388,8 +366,7 @@ def main():
         )
 
     print(
-        f"Isolated demo project {project}, "
-        f"API http://127.0.0.1:{args.port}",
+        f"Isolated demo project {project}, API http://127.0.0.1:{args.port}",
         flush=True,
     )
 

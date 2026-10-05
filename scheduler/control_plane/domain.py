@@ -47,9 +47,7 @@ RETRYABLE = {
 def transition(entity: str, previous: str, new: str) -> None:
     # Keep state changes inside the transitions defined above.
     if (previous, new) not in EDGES[entity]:
-        raise ValueError(
-            f"Invalid {entity} transition {previous} -> {new}"
-        )
+        raise ValueError(f"Invalid {entity} transition {previous} -> {new}")
 
 
 def fingerprint(value: object) -> str:
@@ -73,11 +71,7 @@ def retry_state(
         raise ValueError("Invalid attempt budget")
 
     # Retry only when the error is recoverable and there is budget left.
-    return (
-        "RETRY_WAIT"
-        if error in RETRYABLE and attempt_count < max_retries + 1
-        else "FAILED"
-    )
+    return "RETRY_WAIT" if error in RETRYABLE and attempt_count < max_retries + 1 else "FAILED"
 
 
 def backoff(
@@ -115,9 +109,7 @@ def attempt_valid(
     deadline = attempt["execution_deadline_at"]
 
     # Both the lease and execution deadline must still be valid.
-    return now < attempt["lease_expires_at"] and (
-        deadline is None or now < deadline
-    )
+    return now < attempt["lease_expires_at"] and (deadline is None or now < deadline)
 
 
 class Conflict(Exception):

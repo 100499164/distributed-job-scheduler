@@ -19,9 +19,7 @@ Operation = Literal[
     "MONTE_CARLO_PI",
 ]
 
-KNOWN_OPERATIONS = tuple(
-    sorted(get_args(Operation))
-)
+KNOWN_OPERATIONS = tuple(sorted(get_args(Operation)))
 
 
 def canonical_operations(
@@ -48,10 +46,7 @@ SupportedOperations = Annotated[
 def camel(value: str) -> str:
     first, *rest = value.split("_")
 
-    return first + "".join(
-        word.title()
-        for word in rest
-    )
+    return first + "".join(word.title() for word in rest)
 
 
 class WireModel(BaseModel):
@@ -71,18 +66,13 @@ class IntervalPayload(WireModel):
     def interval(self) -> Self:
         # Empty or reversed intervals do not represent valid work.
         if self.from_inclusive >= self.to_exclusive:
-            raise ValueError(
-                "Interval must be nonempty"
-            )
+            raise ValueError("Interval must be nonempty")
 
         return self
 
     @property
     def work_units(self) -> int:
-        return (
-            self.to_exclusive
-            - self.from_inclusive
-        )
+        return self.to_exclusive - self.from_inclusive
 
 
 class PrimePayload(IntervalPayload):
@@ -151,12 +141,8 @@ class MonteCarloPayload(WireModel):
 
 # Pydantic chooses the payload model from the operation field.
 Payload = Annotated[
-    PrimePayload
-    | RangeSumPayload
-    | MonteCarloPayload,
-    Field(
-        discriminator="operation"
-    ),
+    PrimePayload | RangeSumPayload | MonteCarloPayload,
+    Field(discriminator="operation"),
 ]
 
 
@@ -179,13 +165,16 @@ class CreateJob(WireModel):
 
     payload: Payload
 
-    max_retries: Annotated[
-        StrictInt,
-        Field(
-            ge=0,
-            le=10,
-        ),
-    ] | None = None
+    max_retries: (
+        Annotated[
+            StrictInt,
+            Field(
+                ge=0,
+                le=10,
+            ),
+        ]
+        | None
+    ) = None
 
     @field_validator(
         "payload",
@@ -212,9 +201,7 @@ class CreateJob(WireModel):
         value: str,
     ) -> str:
         if not value.strip():
-            raise ValueError(
-                "Name cannot be blank"
-            )
+            raise ValueError("Name cannot be blank")
 
         return value
 
@@ -222,9 +209,7 @@ class CreateJob(WireModel):
     def nonempty_partitions(self) -> Self:
         # Every requested task must receive at least one unit of work.
         if self.task_count > self.payload.work_units:
-            raise ValueError(
-                "Each partition must contain at least one work unit"
-            )
+            raise ValueError("Each partition must contain at least one work unit")
 
         return self
 
@@ -251,11 +236,7 @@ class Register(WireModel):
     version: Literal["1"]
 
     # Workers support every known operation unless they declare otherwise.
-    supported_operations: SupportedOperations = Field(
-        default_factory=lambda: list(
-            KNOWN_OPERATIONS
-        )
-    )
+    supported_operations: SupportedOperations = Field(default_factory=lambda: list(KNOWN_OPERATIONS))
 
 
 class Claim(WireModel):
@@ -275,9 +256,7 @@ class Heartbeat(WireModel):
         ),
     ]
 
-    @field_validator(
-        "active_attempt_ids"
-    )
+    @field_validator("active_attempt_ids")
     @classmethod
     def unique(
         cls,
@@ -285,9 +264,7 @@ class Heartbeat(WireModel):
     ) -> list[UUID]:
         # Duplicate IDs would make lease renewal ambiguous.
         if len(set(value)) != len(value):
-            raise ValueError(
-                "Duplicate attempt IDs"
-            )
+            raise ValueError("Duplicate attempt IDs")
 
         return value
 
@@ -333,18 +310,12 @@ class MonteCarloResult(WireModel):
     def bounded_hits(self) -> Self:
         # Hits inside the circle can never exceed the number of samples.
         if self.inside_circle > self.samples:
-            raise ValueError(
-                "insideCircle exceeds samples"
-            )
+            raise ValueError("insideCircle exceeds samples")
 
         return self
 
 
-TaskResult = (
-    PrimeCountResult
-    | RangeSumResult
-    | MonteCarloResult
-)
+TaskResult = PrimeCountResult | RangeSumResult | MonteCarloResult
 
 
 class ExecutionError(WireModel):
@@ -365,9 +336,7 @@ class ExecutionError(WireModel):
     ) -> str:
         # Limit the encoded size, not just the number of characters.
         if len(value.encode("utf-8")) > 2048:
-            raise ValueError(
-                "Error message exceeds 2 KiB"
-            )
+            raise ValueError("Error message exceeds 2 KiB")
 
         return value
 
@@ -386,13 +355,9 @@ class Completion(Owner):
         # Success carries a result; failure carries an error, never both.
         if self.outcome == "SUCCEEDED":
             if self.result is None or self.error is not None:
-                raise ValueError(
-                    "Success requires only result"
-                )
+                raise ValueError("Success requires only result")
 
         elif self.error is None or self.result is not None:
-            raise ValueError(
-                "Failure requires only error"
-            )
+            raise ValueError("Failure requires only error")
 
         return self

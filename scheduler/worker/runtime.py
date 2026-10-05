@@ -28,14 +28,10 @@ def configured_operations(value: str | None) -> list[Operation]:
     """Parse the operations enabled for this worker."""
     try:
         return TypeAdapter(SupportedOperations).validate_python(
-            list(KNOWN_OPERATIONS)
-            if value is None
-            else [part.strip() for part in value.split(",")]
+            list(KNOWN_OPERATIONS) if value is None else [part.strip() for part in value.split(",")]
         )
     except ValidationError as exc:
-        raise ValueError(
-            "WORKER_OPERATIONS must be a nonempty, unique list of known operations"
-        ) from exc
+        raise ValueError("WORKER_OPERATIONS must be a nonempty, unique list of known operations") from exc
 
 
 class RemoteError(Exception):
@@ -166,10 +162,7 @@ class Worker:
         self.last_metrics = 0.0
 
     def _error(self, exc: Exception) -> None:
-        if (
-            isinstance(exc, RemoteError)
-            and exc.code in ("SESSION_EXPIRED", "REGISTRATION_CONFLICT")
-        ):
+        if isinstance(exc, RemoteError) and exc.code in ("SESSION_EXPIRED", "REGISTRATION_CONFLICT"):
             event("worker_session_expired", worker_id=self.id)
             self.stop.set()
 
@@ -284,9 +277,7 @@ class Worker:
 
         # Never execute work outside the capabilities advertised at registration.
         if p.get("operation", "PRIME_COUNT") not in self.operations:
-            raise UnsupportedOperation(
-                "Assignment outside advertised capabilities"
-            )
+            raise UnsupportedOperation("Assignment outside advertised capabilities")
 
         result = execute(p, slot.cancel.is_set)
 
@@ -395,9 +386,7 @@ class Worker:
         while not self.stop.wait(interval):
             with self.lock:
                 active = [
-                    aid
-                    for aid, slot in self.slots.items()
-                    if slot.future is not None and not slot.invalid
+                    aid for aid, slot in self.slots.items() if slot.future is not None and not slot.invalid
                 ]
 
             try:
@@ -433,15 +422,8 @@ class Worker:
             return
 
         with self.lock:
-            self.occupied_slots.set(
-                len(self.slots) + int(self.pending_claim is not None)
-            )
-            self.pending_results.set(
-                sum(
-                    slot.completion is not None
-                    for slot in self.slots.values()
-                )
-            )
+            self.occupied_slots.set(len(self.slots) + int(self.pending_claim is not None))
+            self.pending_results.set(sum(slot.completion is not None for slot in self.slots.values()))
 
         write_to_textfile(
             self.metrics_file,
@@ -534,11 +516,7 @@ class Worker:
                 for slot in self.slots.values():
                     slot.cancel.set()
 
-                futures = [
-                    slot.future
-                    for slot in self.slots.values()
-                    if slot.future
-                ]
+                futures = [slot.future for slot in self.slots.values() if slot.future]
 
             if futures:
                 _, unfinished = wait(futures, timeout=5)
@@ -568,9 +546,7 @@ def main() -> None:
             "http://127.0.0.1:8081",
         ),
         int(os.environ.get("WORKER_CAPACITY", "1")),
-        operations=configured_operations(
-            os.environ.get("WORKER_OPERATIONS")
-        ),
+        operations=configured_operations(os.environ.get("WORKER_OPERATIONS")),
         drain_timeout=int(
             os.environ.get(
                 "WORKER_DRAIN_TIMEOUT_SECONDS",

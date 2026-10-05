@@ -12,7 +12,6 @@ def assert_invariants(db):
             WHERE NOT (j.operation = ANY(w.supported_operations))
                OR t.payload->>'operation' <> j.operation
         """,
-
         "capacity": """
             SELECT w.id
             FROM workers w
@@ -22,7 +21,6 @@ def assert_invariants(db):
             GROUP BY w.id
             HAVING count(*) > w.capacity
         """,
-
         "active_pair": """
             SELECT t.id
             FROM tasks t
@@ -42,7 +40,6 @@ def assert_invariants(db):
                     AND a.id IS NOT NULL
                 )
         """,
-
         "attempt_budget": """
             SELECT t.id
             FROM tasks t
@@ -56,7 +53,6 @@ def assert_invariants(db):
                     0
                 )
         """,
-
         "canonical_success": """
             SELECT t.id
             FROM tasks t
@@ -68,7 +64,6 @@ def assert_invariants(db):
                 <>
                 (a.id IS NOT NULL)
         """,
-
         "job_counters": """
             SELECT j.id
             FROM jobs j
@@ -88,6 +83,4 @@ def assert_invariants(db):
 
     # Every query returns rows only when an invariant has been violated.
     for name, query in checks.items():
-        assert db.run(
-            lambda c: c.execute(query).fetchall()
-        ) == [], f"Persistent invariant violated: {name}"
+        assert db.run(lambda c: c.execute(query).fetchall()) == [], f"Persistent invariant violated: {name}"

@@ -37,11 +37,7 @@ def register(
         hostname="capabilities-test",
         capacity=capacity,
         version="1",
-        **(
-            {"supportedOperations": operations}
-            if operations is not None
-            else {}
-        ),
+        **({"supportedOperations": operations} if operations is not None else {}),
     )
 
     scheduler.register(request)
@@ -102,9 +98,7 @@ def finish(
         Completion(
             workerId=worker,
             outcome="SUCCEEDED",
-            result=execute(
-                assignment["payload"]
-            ),
+            result=execute(assignment["payload"]),
         ),
     )
 
@@ -152,13 +146,9 @@ def test_invalid_environment(value):
 
 
 def test_environment_defaults_normalization_and_fail_fast():
-    assert configured_operations(None) == list(
-        KNOWN_OPERATIONS
-    )
+    assert configured_operations(None) == list(KNOWN_OPERATIONS)
 
-    assert configured_operations(
-        " RANGE_SUM, PRIME_COUNT "
-    ) == [
+    assert configured_operations(" RANGE_SUM, PRIME_COUNT ") == [
         "PRIME_COUNT",
         "RANGE_SUM",
     ]
@@ -179,10 +169,7 @@ def test_environment_defaults_normalization_and_fail_fast():
         timeout=5,
     )
 
-    assert (
-        result.returncode != 0
-        and "WORKER_OPERATIONS" in result.stderr
-    )
+    assert result.returncode != 0 and "WORKER_OPERATIONS" in result.stderr
 
     worker = Worker(
         "unused",
@@ -252,9 +239,7 @@ def test_registration_is_set_like_idempotent_and_immutable(db):
         Jobs(
             db,
             Settings(),
-        ).worker(
-            request.worker_id
-        )["supportedOperations"]
+        ).worker(request.worker_id)["supportedOperations"]
         == first["supportedOperations"]
     )
 
@@ -264,9 +249,7 @@ def test_registration_is_set_like_idempotent_and_immutable(db):
             Register(
                 **{
                     **request.model_dump(by_alias=True),
-                    "supportedOperations": [
-                        "PRIME_COUNT"
-                    ],
+                    "supportedOperations": ["PRIME_COUNT"],
                 }
             )
         )
@@ -288,9 +271,7 @@ def test_database_capabilities_constraints(
     db,
     operations,
 ):
-    with pytest.raises(
-        psycopg.errors.CheckViolation
-    ):
+    with pytest.raises(psycopg.errors.CheckViolation):
         db.run(
             lambda c: c.execute(
                 """
@@ -358,9 +339,7 @@ def test_general_worker_can_execute_each_operation(
         assignment,
     )
 
-    assert jobs.job(
-        created["id"]
-    )["status"] == "COMPLETED"
+    assert jobs.job(created["id"])["status"] == "COMPLETED"
 
 
 @pytest.mark.integration
@@ -391,25 +370,22 @@ def test_no_compatible_workers_wait_then_compatible_slots_make_progress(db):
 
     # Incompatible workers must not consume or mutate queued tasks.
     for _ in range(3):
-        assert claim(
-            scheduler,
-            incompatible,
-        ) is None
+        assert (
+            claim(
+                scheduler,
+                incompatible,
+            )
+            is None
+        )
 
     tasks = jobs.list_tasks(
         created["id"],
         200,
     )["items"]
 
-    assert all(
-        task["status"] == "QUEUED"
-        and task["attemptCount"] == 0
-        for task in tasks
-    )
+    assert all(task["status"] == "QUEUED" and task["attemptCount"] == 0 for task in tasks)
 
-    assert jobs.job(
-        created["id"]
-    )["status"] == "QUEUED"
+    assert jobs.job(created["id"])["status"] == "QUEUED"
 
     compatible = register(
         scheduler,
@@ -430,10 +406,13 @@ def test_no_compatible_workers_wait_then_compatible_slots_make_progress(db):
 
     assert error.value.code == "CAPACITY_EXHAUSTED"
 
-    assert claim(
-        scheduler,
-        incompatible,
-    ) is None
+    assert (
+        claim(
+            scheduler,
+            incompatible,
+        )
+        is None
+    )
 
     finish(
         scheduler,
@@ -452,9 +431,7 @@ def test_no_compatible_workers_wait_then_compatible_slots_make_progress(db):
         second,
     )
 
-    assert jobs.job(
-        created["id"]
-    )["status"] == "COMPLETED"
+    assert jobs.job(created["id"])["status"] == "COMPLETED"
 
 
 @pytest.mark.integration
@@ -504,22 +481,26 @@ def test_recovery_waits_for_compatible_replacement_preserving_payload(db):
     # Backoff cannot be bypassed even by a compatible worker.
     replacement = register(scheduler)
 
-    assert claim(
-        scheduler,
-        replacement,
-    ) is None
+    assert (
+        claim(
+            scheduler,
+            replacement,
+        )
+        is None
+    )
 
     eligible(db)
 
     # Recovery must still preserve workload compatibility.
-    assert claim(
-        scheduler,
-        incompatible,
-    ) is None
+    assert (
+        claim(
+            scheduler,
+            incompatible,
+        )
+        is None
+    )
 
-    assert jobs.task(
-        old["taskId"]
-    )["status"] == "RETRY_WAIT"
+    assert jobs.task(old["taskId"])["status"] == "RETRY_WAIT"
 
     new = claim(
         scheduler,
@@ -544,9 +525,7 @@ def test_recovery_waits_for_compatible_replacement_preserving_payload(db):
             old,
         )
 
-    assert jobs.job(
-        created["id"]
-    )["status"] == "COMPLETED"
+    assert jobs.job(created["id"])["status"] == "COMPLETED"
 
 
 @pytest.mark.integration
@@ -605,9 +584,7 @@ def test_concurrent_scheduler_instances_preserve_routing_capacity_and_unique_tas
             assert exc.code == "CAPACITY_EXHAUSTED"
             return None
 
-    with ThreadPoolExecutor(
-        max_workers=12
-    ) as pool:
+    with ThreadPoolExecutor(max_workers=12) as pool:
         assignments = [
             assignment
             for assignment in pool.map(
@@ -621,12 +598,7 @@ def test_concurrent_scheduler_instances_preserve_routing_capacity_and_unique_tas
     assert len(assignments) == 8
 
     # No task may be assigned twice during the race.
-    assert len(
-        {
-            assignment["taskId"]
-            for assignment in assignments
-        }
-    ) == 8
+    assert len({assignment["taskId"] for assignment in assignments}) == 8
 
     from invariants import assert_invariants
 
@@ -644,7 +616,4 @@ def test_concurrent_scheduler_instances_preserve_routing_capacity_and_unique_tas
         ).fetchall()
     )
 
-    assert all(
-        row["n"] == 2
-        for row in rows
-    )
+    assert all(row["n"] == 2 for row in rows)

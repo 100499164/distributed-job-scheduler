@@ -25,9 +25,7 @@ logger = logging.getLogger("scheduler")
 def configure_logs(component: str) -> None:
     if not logger.handlers:
         handler = logging.StreamHandler()
-        handler.setFormatter(
-            logging.Formatter("%(message)s")
-        )
+        handler.setFormatter(logging.Formatter("%(message)s"))
         logger.addHandler(handler)
 
     logger.setLevel(logging.INFO)
@@ -69,9 +67,7 @@ def exception_event(
         name,
         level=logging.ERROR,
         reason=type(exc).__name__,
-        traceback="".join(
-            traceback.format_exception(exc)
-        ),
+        traceback="".join(traceback.format_exception(exc)),
         **fields,
     )
 
@@ -207,10 +203,7 @@ class Metrics:
         # Read all database-backed gauges from the same transaction snapshot.
         tasks, workers, occupied, age = db.run(read)
 
-        counts = {
-            row["status"]: row["n"]
-            for row in tasks
-        }
+        counts = {row["status"]: row["n"] for row in tasks}
 
         for state in (
             "QUEUED",
@@ -220,23 +213,13 @@ class Metrics:
             "COMPLETED",
             "FAILED",
         ):
-            self.tasks.labels(state).set(
-                counts.get(state, 0)
-            )
+            self.tasks.labels(state).set(counts.get(state, 0))
 
         self.workers.set(workers["n"])
 
-        self.slots.labels(
-            "configured_online"
-        ).set(
-            workers["capacity"]
-        )
+        self.slots.labels("configured_online").set(workers["capacity"])
 
-        self.slots.labels(
-            "occupied"
-        ).set(
-            occupied
-        )
+        self.slots.labels("occupied").set(occupied)
 
         self.oldest.set(float(age))
 
@@ -246,6 +229,4 @@ class Metrics:
             "pool_available",
             "requests_waiting",
         ):
-            self.pool.labels(key).set(
-                db.pool.get_stats().get(key, 0)
-            )
+            self.pool.labels(key).set(db.pool.get_stats().get(key, 0))

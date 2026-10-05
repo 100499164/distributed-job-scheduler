@@ -35,15 +35,10 @@ class Assignment(TypedDict):
 
 def db_now(c: Connection[Row]) -> datetime:
     # Use the database clock so every scheduler instance agrees on time.
-    return required_row(
-        c.execute(
-            "SELECT clock_timestamp() AS now"
-        ).fetchone()
-    )["now"]
+    return required_row(c.execute("SELECT clock_timestamp() AS now").fetchone())["now"]
 
 
 class Scheduler:
-
     def __init__(
         self,
         db: Database,
@@ -311,15 +306,10 @@ class Scheduler:
                 )
 
                 # Execution cannot outlive the absolute execution deadline.
-                deadline = now + timedelta(
-                    milliseconds=self.settings.max_execution_ms
-                )
+                deadline = now + timedelta(milliseconds=self.settings.max_execution_ms)
 
                 lease = min(
-                    now
-                    + timedelta(
-                        milliseconds=self.settings.execution_lease_ms
-                    ),
+                    now + timedelta(milliseconds=self.settings.execution_lease_ms),
                     deadline,
                 )
 
@@ -428,7 +418,8 @@ class Scheduler:
                 """,
                 (
                     error,
-                    now + backoff(
+                    now
+                    + backoff(
                         task["attempt_count"],
                         jitter,
                     ),
@@ -469,11 +460,7 @@ class Scheduler:
         state = "RUNNING"
 
         if finished:
-            state = (
-                "FAILED"
-                if failed
-                else "COMPLETED"
-            )
+            state = "FAILED" if failed else "COMPLETED"
 
             transition(
                 "job",
@@ -559,9 +546,7 @@ class Scheduler:
             # Validate successful results against the workload contract.
             if request.result is not None:
                 try:
-                    workload(
-                        task["payload"]["operation"]
-                    ).validate_result(
+                    workload(task["payload"]["operation"]).validate_result(
                         task["payload"],
                         request.result,
                     )
@@ -579,11 +564,7 @@ class Scheduler:
                 request.outcome,
             )
 
-            error = (
-                request.error.code
-                if request.error
-                else None
-            )
+            error = request.error.code if request.error else None
 
             # Failed attempts either retry or permanently fail the task.
             new_state = (
@@ -611,16 +592,8 @@ class Scheduler:
                     request.outcome,
                     now,
                     error,
-                    request.error.message
-                    if request.error
-                    else None,
-                    Jsonb(
-                        request.result.model_dump(
-                            by_alias=True
-                        )
-                    )
-                    if request.result
-                    else None,
+                    request.error.message if request.error else None,
+                    Jsonb(request.result.model_dump(by_alias=True)) if request.result else None,
                     digest,
                     attempt_id,
                 ),
@@ -697,24 +670,13 @@ class Scheduler:
                 FROM task_attempts
                 WHERE id=ANY(%s)
                 """,
-                (
-                    request.active_attempt_ids,
-                ),
+                (request.active_attempt_ids,),
             ).fetchall()
 
-            own = [
-                a
-                for a in identities
-                if a["worker_id"] == worker_id
-            ]
+            own = [a for a in identities if a["worker_id"] == worker_id]
 
             # Lock in deterministic order to reduce deadlock risk.
-            task_ids = sorted(
-                {
-                    a["task_id"]
-                    for a in own
-                }
-            )
+            task_ids = sorted({a["task_id"] for a in own})
 
             tasks = c.execute(
                 """
@@ -724,9 +686,7 @@ class Scheduler:
                 ORDER BY id
                 FOR UPDATE
                 """,
-                (
-                    task_ids,
-                ),
+                (task_ids,),
             ).fetchall()
 
             attempts = c.execute(
@@ -737,25 +697,14 @@ class Scheduler:
                 ORDER BY task_id,id
                 FOR UPDATE
                 """,
-                (
-                    [a["id"] for a in own],
-                ),
+                ([a["id"] for a in own],),
             ).fetchall()
 
-            by_id = {
-                a["id"]: a
-                for a in attempts
-            }
+            by_id = {a["id"]: a for a in attempts}
 
-            owners = {
-                a["id"]: a["worker_id"]
-                for a in identities
-            }
+            owners = {a["id"]: a["worker_id"] for a in identities}
 
-            task_states = {
-                t["id"]: t["status"]
-                for t in tasks
-            }
+            task_states = {t["id"]: t["status"] for t in tasks}
 
             now = db_now(c)
 
@@ -803,10 +752,7 @@ class Scheduler:
                 else:
                     # Never renew a lease past the execution deadline.
                     lease = min(
-                        now
-                        + timedelta(
-                            milliseconds=self.settings.execution_lease_ms
-                        ),
+                        now + timedelta(milliseconds=self.settings.execution_lease_ms),
                         a["execution_deadline_at"],
                     )
 
@@ -910,9 +856,7 @@ class Scheduler:
                     WHERE worker_id=%s
                         AND status IN ('ASSIGNED','RUNNING')
                     """,
-                    (
-                        worker["id"],
-                    ),
+                    (worker["id"],),
                 ).fetchone()
             )["n"]
 
@@ -939,9 +883,7 @@ class Scheduler:
                     WHERE id=%s
                     FOR UPDATE
                     """,
-                    (
-                        task["job_id"],
-                    ),
+                    (task["job_id"],),
                 ).fetchone()
             )
 
@@ -1004,10 +946,7 @@ class Scheduler:
                         task["attempt_count"] + 1,
                         request.claim_request_id,
                         now,
-                        now
-                        + timedelta(
-                            milliseconds=self.settings.assignment_timeout_ms
-                        ),
+                        now + timedelta(milliseconds=self.settings.assignment_timeout_ms),
                     ),
                 ).fetchone()
             )
@@ -1019,9 +958,7 @@ class Scheduler:
                     attempt_count=attempt_count+1
                 WHERE id=%s
                 """,
-                (
-                    task["id"],
-                ),
+                (task["id"],),
             )
 
             # The first accepted claim moves the job into RUNNING.
@@ -1064,9 +1001,7 @@ class Scheduler:
 
         if result:
             if outcome == "accepted":
-                self.metrics.assignments.labels(
-                    result["payload"]["operation"]
-                ).inc()
+                self.metrics.assignments.labels(result["payload"]["operation"]).inc()
 
             event(
                 "claim_" + outcome,

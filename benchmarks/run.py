@@ -26,9 +26,7 @@ def percentile(values, fraction):
     index = (len(values) - 1) * fraction
     lo = int(index)
 
-    return values[lo] + (
-        values[min(lo + 1, len(values) - 1)] - values[lo]
-    ) * (index - lo)
+    return values[lo] + (values[min(lo + 1, len(values) - 1)] - values[lo]) * (index - lo)
 
 
 def page_all(api, path):
@@ -71,9 +69,7 @@ def run_job(api, end, count, timeout=600):
         )
 
         if state["status"] == "FAILED":
-            raise RuntimeError(
-                "Benchmark job failed; do not report this as successful throughput"
-            )
+            raise RuntimeError("Benchmark job failed; do not report this as successful throughput")
 
         if state["status"] == "COMPLETED":
             elapsed = time.monotonic() - started
@@ -92,25 +88,16 @@ def run_job(api, end, count, timeout=600):
                 )["items"]
             ]
 
-            created = {
-                task["id"]: datetime.fromisoformat(task["createdAt"])
-                for task in tasks
-            }
+            created = {task["id"]: datetime.fromisoformat(task["createdAt"]) for task in tasks}
 
             queue = [
-                (
-                    datetime.fromisoformat(attempt["assignedAt"])
-                    - created[attempt["taskId"]]
-                ).total_seconds()
+                (datetime.fromisoformat(attempt["assignedAt"]) - created[attempt["taskId"]]).total_seconds()
                 for attempt in attempts
                 if attempt["attemptNumber"] == 1
             ]
 
             latency = [
-                (
-                    datetime.fromisoformat(task["finishedAt"])
-                    - created[task["id"]]
-                ).total_seconds()
+                (datetime.fromisoformat(task["finishedAt"]) - created[task["id"]]).total_seconds()
                 for task in tasks
             ]
 
@@ -124,16 +111,13 @@ def run_job(api, end, count, timeout=600):
                 "queueSeconds": queue,
                 "taskLatencySeconds": latency,
                 "jobDatabaseSeconds": (
-                    datetime.fromisoformat(state["finishedAt"])
-                    - datetime.fromisoformat(state["createdAt"])
+                    datetime.fromisoformat(state["finishedAt"]) - datetime.fromisoformat(state["createdAt"])
                 ).total_seconds(),
             }
 
         time.sleep(0.05)
 
-    raise TimeoutError(
-        "Benchmark exceeded deadline"
-    )
+    raise TimeoutError("Benchmark exceeded deadline")
 
 
 def main():
@@ -156,9 +140,7 @@ def main():
     args = parser.parse_args()
 
     if args.repetitions < 5:
-        parser.error(
-            "At least five measured repetitions are required"
-        )
+        parser.error("At least five measured repetitions are required")
 
     root = Path(__file__).resolve().parents[1]
 
@@ -186,10 +168,7 @@ def main():
         "interval": [2, args.end],
         "capacity": 1,
         "repetitions": args.repetitions,
-        "limitation": (
-            "One host; CPU quotas and physical hardware "
-            "must be recorded by the operator"
-        ),
+        "limitation": ("One host; CPU quotas and physical hardware must be recorded by the operator"),
     }
 
     info = json.loads(
@@ -217,17 +196,10 @@ def main():
 
     # Pin the measured source and dependency set so results remain reproducible.
     metadata["sourceSha256"] = hashlib.sha256(
-        b"".join(
-            path.read_bytes()
-            for path in sorted(
-                (root / "scheduler").rglob("*.py")
-            )
-        )
+        b"".join(path.read_bytes() for path in sorted((root / "scheduler").rglob("*.py")))
     ).hexdigest()
 
-    metadata["dependencyLock"] = (
-        root / "requirements.lock"
-    ).read_text()
+    metadata["dependencyLock"] = (root / "requirements.lock").read_text()
 
     (args.output / "metadata.json").write_text(
         json.dumps(
@@ -260,9 +232,7 @@ def main():
             )
 
             if pending:
-                raise RuntimeError(
-                    "Pending work exists; use a clean benchmark environment"
-                )
+                raise RuntimeError("Pending work exists; use a clean benchmark environment")
 
             subprocess.run(
                 [
@@ -298,14 +268,9 @@ def main():
                     count,
                 )
 
-                samples.append(
-                    result["observedSeconds"]
-                )
+                samples.append(result["observedSeconds"])
 
-                target = (
-                    args.output
-                    / f"tasks-{count}-workers-{workers}-run-{repetition}.json"
-                )
+                target = args.output / f"tasks-{count}-workers-{workers}-run-{repetition}.json"
 
                 target.write_text(
                     json.dumps(
@@ -328,13 +293,9 @@ def main():
                     text=True,
                 )
 
-                target.with_suffix(
-                    ".workers.log"
-                ).write_text(logs)
+                target.with_suffix(".workers.log").write_text(logs)
 
-            median = statistics.median(
-                samples
-            )
+            median = statistics.median(samples)
 
             if workers == 1:
                 baseline = median
@@ -346,16 +307,8 @@ def main():
                 "minSeconds": min(samples),
                 "maxSeconds": max(samples),
                 "stdevSeconds": statistics.stdev(samples),
-                "speedup": (
-                    baseline / median
-                    if baseline
-                    else None
-                ),
-                "efficiency": (
-                    baseline / median / workers
-                    if baseline
-                    else None
-                ),
+                "speedup": (baseline / median if baseline else None),
+                "efficiency": (baseline / median / workers if baseline else None),
             }
 
             summary.append(row)

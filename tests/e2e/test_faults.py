@@ -29,14 +29,7 @@ FAST = {
 def test_kill_calculating_worker_reassign_and_reject_old_result(cluster, db):
     victim = cluster.worker("victim")
 
-    eventually(
-        lambda: db.run(
-            lambda c: c.execute(
-                "SELECT count(*) AS n FROM workers"
-            ).fetchone()
-        )["n"]
-        == 1
-    )
+    eventually(lambda: db.run(lambda c: c.execute("SELECT count(*) AS n FROM workers").fetchone())["n"] == 1)
 
     job = create(
         cluster.api_url,
@@ -94,21 +87,13 @@ def test_kill_calculating_worker_reassign_and_reject_old_result(cluster, db):
     final = eventually(
         lambda: (
             result
-            if (
-                result := get(
-                    cluster.api_url + "/v1/jobs/" + job["id"]
-                )
-            )["status"]
-            == "COMPLETED"
+            if (result := get(cluster.api_url + "/v1/jobs/" + job["id"]))["status"] == "COMPLETED"
             else None
         ),
         40,
     )
 
-    assert (
-        final["result"]["totalPrimeCount"]
-        == sieve_count(800000)
-    )
+    assert final["result"]["totalPrimeCount"] == sieve_count(800000)
 
     history = db.run(
         lambda c: c.execute(
@@ -165,28 +150,24 @@ def test_short_scheduler_restart_preserves_live_attempt(cluster, db):
     cluster.start_scheduler()
 
     # Restarting the scheduler must not invalidate a still-live attempt.
-    assert client.post(
-        f"/internal/v1/attempts/{assignment['attemptId']}/start",
-        {"workerId": worker},
-    ) == started
+    assert (
+        client.post(
+            f"/internal/v1/attempts/{assignment['attemptId']}/start",
+            {"workerId": worker},
+        )
+        == started
+    )
 
     client.post(
         f"/internal/v1/attempts/{assignment['attemptId']}/completion",
         {
             "workerId": worker,
             "outcome": "SUCCEEDED",
-            "result": {
-                "primeCount": prime_count(2, 10000)
-            },
+            "result": {"primeCount": prime_count(2, 10000)},
         },
     )
 
-    assert (
-        get(
-            cluster.api_url + "/v1/jobs/" + job["id"]
-        )["result"]["totalPrimeCount"]
-        == 1229
-    )
+    assert get(cluster.api_url + "/v1/jobs/" + job["id"])["result"]["totalPrimeCount"] == 1229
 
 
 def test_scheduler_restart_with_expired_lease_recovers_state(cluster, db):
@@ -260,23 +241,14 @@ def test_scheduler_restart_with_expired_lease_recovers_state(cluster, db):
     result = eventually(
         lambda: (
             current
-            if (
-                current := get(
-                    cluster.api_url + "/v1/jobs/" + job["id"]
-                )
-            )["status"]
-            == "COMPLETED"
+            if (current := get(cluster.api_url + "/v1/jobs/" + job["id"]))["status"] == "COMPLETED"
             else None
         )
     )
 
     assert result["result"]["totalPrimeCount"] == 1229
 
-    assert db.run(
-        lambda c: c.execute(
-            "SELECT count(*) AS n FROM task_attempts"
-        ).fetchone()
-    )["n"] == 2
+    assert db.run(lambda c: c.execute("SELECT count(*) AS n FROM task_attempts").fetchone())["n"] == 2
 
 
 class DropOnce(Client):
@@ -287,15 +259,9 @@ class DropOnce(Client):
     def post(self, path, body):
         result = super().post(path, body)
 
-        if (
-            path.endswith(self.suffix)
-            and result is not None
-            and not self.dropped
-        ):
+        if path.endswith(self.suffix) and result is not None and not self.dropped:
             self.dropped = True
-            raise URLError(
-                "Test-only response loss AFTER committed HTTP operation"
-            )
+            raise URLError("Test-only response loss AFTER committed HTTP operation")
 
         return result
 
@@ -343,33 +309,19 @@ def test_worker_retries_same_identity_after_response_loss(cluster, db, suffix):
         result = eventually(
             lambda: (
                 current
-                if (
-                    current := get(
-                        cluster.api_url + "/v1/jobs/" + job["id"]
-                    )
-                )["status"]
-                == "COMPLETED"
+                if (current := get(cluster.api_url + "/v1/jobs/" + job["id"]))["status"] == "COMPLETED"
                 else None
             )
         )
 
-        eventually(
-            lambda: (
-                not worker.slots
-                and worker.pending_claim is None
-            )
-        )
+        eventually(lambda: (not worker.slots and worker.pending_claim is None))
 
         # Lost responses must be retried without duplicating work.
         assert client.dropped
         assert worker.calculations == 1
         assert result["result"]["totalPrimeCount"] == 1229
 
-        assert db.run(
-            lambda c: c.execute(
-                "SELECT count(*) AS n FROM task_attempts"
-            ).fetchone()
-        )["n"] == 1
+        assert db.run(lambda c: c.execute("SELECT count(*) AS n FROM task_attempts").fetchone())["n"] == 1
 
     finally:
         worker.stop.set()

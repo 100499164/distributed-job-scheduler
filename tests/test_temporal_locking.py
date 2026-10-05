@@ -83,9 +83,7 @@ def test_completion_rechecks_time_after_waiting_for_job_lock(db):
         with pytest.raises(Conflict):
             future.result(timeout=5)
 
-    assert jobs.job(
-        job["id"]
-    )["completedTasks"] == 0
+    assert jobs.job(job["id"])["completedTasks"] == 0
 
 
 def test_absolute_deadline_expires_despite_recent_process_heartbeat(db):
@@ -117,24 +115,14 @@ def test_absolute_deadline_expires_despite_recent_process_heartbeat(db):
     assert (
         scheduler.heartbeat(
             worker,
-            Heartbeat(
-                activeAttemptIds=[
-                    assignment["attemptId"]
-                ]
-            ),
+            Heartbeat(activeAttemptIds=[assignment["attemptId"]]),
         )["rejected"][0]["reason"]
         == "EXPIRED"
     )
 
-    Recovery(
-        scheduler
-    ).sweep()
+    Recovery(scheduler).sweep()
 
     # The worker itself is still healthy; only the attempt timed out.
-    assert jobs.worker(
-        worker
-    )["status"] == "ONLINE"
+    assert jobs.worker(worker)["status"] == "ONLINE"
 
-    assert jobs.attempts(
-        assignment["taskId"]
-    )["items"][0]["errorCode"] == "EXECUTION_TIMEOUT"
+    assert jobs.attempts(assignment["taskId"])["items"][0]["errorCode"] == "EXECUTION_TIMEOUT"

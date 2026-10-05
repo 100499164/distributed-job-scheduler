@@ -53,17 +53,11 @@ def test_partition_formula(length, count):
 
     for index, (_, part) in enumerate(parts):
         # Partition sizes differ by at most one element.
-        assert (
-            part["toExclusive"] - part["fromInclusive"]
-            == q + (index < r)
-        )
+        assert part["toExclusive"] - part["fromInclusive"] == q + (index < r)
 
         # Partitions must be contiguous with no gaps or overlaps.
         if index:
-            assert (
-                parts[index - 1][1]["toExclusive"]
-                == part["fromInclusive"]
-            )
+            assert parts[index - 1][1]["toExclusive"] == part["fromInclusive"]
 
 
 @pytest.mark.integration
@@ -103,10 +97,7 @@ def test_create_query_defaults_conflict_and_pagination(db):
         3,
     )
 
-    assert [
-        task["partitionIndex"]
-        for task in page["items"]
-    ] == [
+    assert [task["partitionIndex"] for task in page["items"]] == [
         0,
         1,
         2,
@@ -118,26 +109,17 @@ def test_create_query_defaults_conflict_and_pagination(db):
         page["nextCursor"],
     )
 
-    assert [
-        task["partitionIndex"]
-        for task in next_page["items"]
-    ] == [
+    assert [task["partitionIndex"] for task in next_page["items"]] == [
         3,
         4,
         5,
     ]
 
-    assert jobs.job(
-        first["id"]
-    )["result"] is None
+    assert jobs.job(first["id"])["result"] is None
 
-    assert jobs.task(
-        page["items"][0]["id"]
-    )["retryCount"] == 0
+    assert jobs.task(page["items"][0]["id"])["retryCount"] == 0
 
-    assert jobs.list_jobs(
-        1
-    )["items"][0]["id"] == first["id"]
+    assert jobs.list_jobs(1)["items"][0]["id"] == first["id"]
 
     # A task cursor cannot be reused for the jobs endpoint.
     with pytest.raises(Conflict):
@@ -165,9 +147,7 @@ def test_concurrent_creation_one_job_and_exact_tasks(db):
             "concurrent",
         )
 
-    with ThreadPoolExecutor(
-        max_workers=8
-    ) as pool:
+    with ThreadPoolExecutor(max_workers=8) as pool:
         results = list(
             pool.map(
                 create,
@@ -176,36 +156,29 @@ def test_concurrent_creation_one_job_and_exact_tasks(db):
         )
 
     # Concurrent idempotent requests must converge on one job.
-    assert len(
-        {
-            result[0]["id"]
-            for result in results
-        }
-    ) == 1
+    assert len({result[0]["id"] for result in results}) == 1
 
     # Exactly one caller creates the job.
-    assert sum(
-        result[1]
-        for result in results
-    ) == 1
+    assert sum(result[1] for result in results) == 1
 
     # Tasks are inserted exactly once with the winning job creation.
-    assert db.run(
-        lambda c: c.execute(
-            """
+    assert (
+        db.run(
+            lambda c: c.execute(
+                """
             SELECT count(*) AS n
             FROM tasks
             """
-        ).fetchone()
-    )["n"] == 7
+            ).fetchone()
+        )["n"]
+        == 7
+    )
 
 
 @pytest.mark.integration
 def test_creation_rollback_is_atomic(db):
     def interrupt(name, c):
-        raise RuntimeError(
-            "controlled interruption before commit"
-        )
+        raise RuntimeError("controlled interruption before commit")
 
     # A failure before commit must roll back both the job and its tasks.
     with pytest.raises(RuntimeError):
@@ -218,20 +191,26 @@ def test_creation_rollback_is_atomic(db):
             str(uuid4()),
         )
 
-    assert db.run(
-        lambda c: c.execute(
-            """
+    assert (
+        db.run(
+            lambda c: c.execute(
+                """
             SELECT count(*) AS n
             FROM jobs
             """
-        ).fetchone()
-    )["n"] == 0
+            ).fetchone()
+        )["n"]
+        == 0
+    )
 
-    assert db.run(
-        lambda c: c.execute(
-            """
+    assert (
+        db.run(
+            lambda c: c.execute(
+                """
             SELECT count(*) AS n
             FROM tasks
             """
-        ).fetchone()
-    )["n"] == 0
+            ).fetchone()
+        )["n"]
+        == 0
+    )

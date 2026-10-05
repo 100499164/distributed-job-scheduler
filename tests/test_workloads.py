@@ -144,9 +144,7 @@ def test_strict_new_payloads(payload):
     PAYLOADS,
 )
 def test_task_count_and_partition_accounting(payload):
-    request = create_request(
-        payload
-    )
+    request = create_request(payload)
 
     # Every task must receive at least one unit of work.
     with pytest.raises(ValidationError):
@@ -162,10 +160,7 @@ def test_task_count_and_partition_accounting(payload):
         )
     )
 
-    assert [
-        index
-        for index, _ in parts
-    ] == [
+    assert [index for index, _ in parts] == [
         0,
         1,
         2,
@@ -173,25 +168,13 @@ def test_task_count_and_partition_accounting(payload):
 
     # Partitioning must preserve the exact total amount of work.
     assert (
-        sum(
-            workload(
-                part["operation"]
-            ).payload_type.model_validate(
-                part
-            ).work_units
-            for _, part in parts
-        )
+        sum(workload(part["operation"]).payload_type.model_validate(part).work_units for _, part in parts)
         == request.payload.work_units
     )
 
     if "samples" in payload:
         # Monte Carlo partitions receive distinct deterministic seeds.
-        assert len(
-            {
-                part["seed"]
-                for _, part in parts
-            }
-        ) == 3
+        assert len({part["seed"] for _, part in parts}) == 3
 
         assert parts == list(
             partitions(
@@ -200,10 +183,7 @@ def test_task_count_and_partition_accounting(payload):
             )
         )
 
-        assert [
-            part["seed"]
-            for _, part in parts
-        ] == [
+        assert [part["seed"] for _, part in parts] == [
             partition_seed(
                 payload["seed"],
                 index,
@@ -213,19 +193,12 @@ def test_task_count_and_partition_accounting(payload):
 
     else:
         # Range workloads must cover the original interval exactly.
-        assert (
-            parts[0][1]["fromInclusive"]
-            == payload["fromInclusive"]
-        )
+        assert parts[0][1]["fromInclusive"] == payload["fromInclusive"]
 
-        assert (
-            parts[-1][1]["toExclusive"]
-            == payload["toExclusive"]
-        )
+        assert parts[-1][1]["toExclusive"] == payload["toExclusive"]
 
         assert all(
-            left[1]["toExclusive"]
-            == right[1]["fromInclusive"]
+            left[1]["toExclusive"] == right[1]["fromInclusive"]
             for left, right in zip(
                 parts,
                 parts[1:],
@@ -250,9 +223,7 @@ def test_legacy_default_and_registry_coverage():
         }
     )
 
-    assert implicit == create_request(
-        PAYLOADS[0]
-    )
+    assert implicit == create_request(PAYLOADS[0])
 
     # Every catalog workload must have a worker executor.
     assert set(WORKLOADS) == set(EXECUTORS)
@@ -271,9 +242,7 @@ def test_legacy_default_and_registry_coverage():
     PAYLOADS,
 )
 def test_execution_repeatability_reduction_and_cancellation(payload):
-    request = create_request(
-        payload
-    )
+    request = create_request(payload)
 
     results = [
         execute(part)
@@ -292,39 +261,20 @@ def test_execution_repeatability_reduction_and_cancellation(payload):
         )
     ]
 
-    result = workload(
-        payload["operation"]
-    ).reduce(
-        results
-    )
+    result = workload(payload["operation"]).reduce(results)
 
     if payload["operation"] == "PRIME_COUNT":
-        assert result == {
-            "totalPrimeCount": 25
-        }
+        assert result == {"totalPrimeCount": 25}
 
     elif payload["operation"] == "RANGE_SUM":
-        assert result == {
-            "totalSum": sum(
-                range(-11, 100)
-            )
-        }
+        assert result == {"totalSum": sum(range(-11, 100))}
 
     else:
         assert result["samples"] == 10001
 
-        assert result["insideCircle"] == sum(
-            item["insideCircle"]
-            for item in results
-        )
+        assert result["insideCircle"] == sum(item["insideCircle"] for item in results)
 
-        assert (
-            abs(
-                result["piEstimate"]
-                - 3.14159
-            )
-            < 0.1
-        )
+        assert abs(result["piEstimate"] - 3.14159) < 0.1
 
     # Every workload must cooperate with cancellation.
     with pytest.raises(Cancelled):
@@ -376,15 +326,10 @@ def test_sum_bounds_and_exact_integers(
         }
     )
 
-    assert result["rangeSum"] == (
-        end * (end - 1)
-        - start * (start - 1)
-    ) // 2
+    assert result["rangeSum"] == (end * (end - 1) - start * (start - 1)) // 2
 
     # Keep the result inside the exact integer range expected by the protocol.
-    assert abs(
-        result["rangeSum"]
-    ) < 2**53
+    assert abs(result["rangeSum"]) < 2**53
 
 
 @pytest.mark.integration
@@ -421,32 +366,32 @@ def test_idempotency_recovery_same_payload_canonical_result_and_ack(
     )["items"]
 
     # Replaying the same request returns the original job and tasks.
-    assert jobs.create(
-        request,
-        "same",
-    )[0] == job
+    assert (
+        jobs.create(
+            request,
+            "same",
+        )[0]
+        == job
+    )
 
-    assert jobs.list_tasks(
-        job["id"],
-        200,
-    )["items"] == original
+    assert (
+        jobs.list_tasks(
+            job["id"],
+            200,
+        )["items"]
+        == original
+    )
 
     with pytest.raises(
         Conflict,
         match="different content",
     ):
         jobs.create(
-            request.model_copy(
-                update={
-                    "name": "changed"
-                }
-            ),
+            request.model_copy(update={"name": "changed"}),
             "same",
         )
 
-    worker = register(
-        scheduler
-    )
+    worker = register(scheduler)
 
     old = scheduler.claim(
         Claim(
@@ -465,15 +410,11 @@ def test_idempotency_recovery_same_payload_canonical_result_and_ack(
         worker,
     )
 
-    Recovery(
-        scheduler
-    ).sweep()
+    Recovery(scheduler).sweep()
 
     eligible(db)
 
-    replacement = register(
-        scheduler
-    )
+    replacement = register(scheduler)
 
     new = scheduler.claim(
         Claim(
@@ -483,21 +424,13 @@ def test_idempotency_recovery_same_payload_canonical_result_and_ack(
     )
 
     # Recovery must preserve the canonical task payload.
-    assert (
-        new["payload"]
-        == old["payload"]
-        == original[0]["payload"]
-    )
+    assert new["payload"] == old["payload"] == original[0]["payload"]
 
     assert new["attemptNumber"] == 2
 
-    result = execute(
-        new["payload"]
-    )
+    result = execute(new["payload"])
 
-    assert result == execute(
-        old["payload"]
-    )
+    assert result == execute(old["payload"])
 
     scheduler.start(
         new["attemptId"],
@@ -531,36 +464,24 @@ def test_idempotency_recovery_same_payload_canonical_result_and_ack(
         replacement,
     )
 
-    Recovery(
-        scheduler
-    ).sweep()
+    Recovery(scheduler).sweep()
 
     # An accepted completion remains replayable after the worker goes stale.
-    assert scheduler.complete(
-        new["attemptId"],
-        completion,
-    ) == ack
-
-    expected = workload(
-        payload["operation"]
-    ).reduce(
-        [result]
+    assert (
+        scheduler.complete(
+            new["attemptId"],
+            completion,
+        )
+        == ack
     )
 
-    assert jobs.job(
-        job["id"]
-    )["result"] == expected
+    expected = workload(payload["operation"]).reduce([result])
 
-    assert jobs.list_jobs(
-        200
-    )["items"][0]["result"] == expected
+    assert jobs.job(job["id"])["result"] == expected
 
-    assert [
-        attempt["status"]
-        for attempt in jobs.attempts(
-            new["taskId"]
-        )["items"]
-    ] == [
+    assert jobs.list_jobs(200)["items"][0]["result"] == expected
+
+    assert [attempt["status"] for attempt in jobs.attempts(new["taskId"])["items"]] == [
         "EXPIRED",
         "SUCCEEDED",
     ]
@@ -592,9 +513,7 @@ def test_wrong_result_schema_and_bounds_do_not_mutate_attempt(
         "wrong-result",
     )
 
-    worker = register(
-        scheduler
-    )
+    worker = register(scheduler)
 
     task = scheduler.claim(
         Claim(
@@ -608,11 +527,7 @@ def test_wrong_result_schema_and_bounds_do_not_mutate_attempt(
         worker,
     )
 
-    wrong = (
-        {"rangeSum": 0}
-        if payload["operation"] == "PRIME_COUNT"
-        else {"primeCount": 0}
-    )
+    wrong = {"rangeSum": 0} if payload["operation"] == "PRIME_COUNT" else {"primeCount": 0}
 
     invalid_bounds = {
         "PRIME_COUNT": {
@@ -625,17 +540,13 @@ def test_wrong_result_schema_and_bounds_do_not_mutate_attempt(
             "samples": 1,
             "insideCircle": 1,
         },
-    }[
-        payload["operation"]
-    ]
+    }[payload["operation"]]
 
     for result in (
         wrong,
         invalid_bounds,
     ):
-        with pytest.raises(
-            Conflict
-        ) as error:
+        with pytest.raises(Conflict) as error:
             scheduler.complete(
                 task["attemptId"],
                 Completion(
@@ -648,13 +559,9 @@ def test_wrong_result_schema_and_bounds_do_not_mutate_attempt(
         assert error.value.code == "INVALID_RESULT"
 
         # Invalid results must not partially mutate task or job state.
-        assert jobs.task(
-            task["taskId"]
-        )["status"] == "RUNNING"
+        assert jobs.task(task["taskId"])["status"] == "RUNNING"
 
-        assert jobs.job(
-            job["id"]
-        )["result"] is None
+        assert jobs.job(job["id"])["result"] is None
 
     scheduler.complete(
         task["attemptId"],
@@ -668,13 +575,9 @@ def test_wrong_result_schema_and_bounds_do_not_mutate_attempt(
         ),
     )
 
-    assert jobs.job(
-        job["id"]
-    )["status"] == "FAILED"
+    assert jobs.job(job["id"])["status"] == "FAILED"
 
-    assert jobs.job(
-        job["id"]
-    )["result"] is None
+    assert jobs.job(job["id"])["result"] is None
 
 
 @pytest.mark.parametrize(

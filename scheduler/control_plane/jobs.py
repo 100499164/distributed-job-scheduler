@@ -21,17 +21,10 @@ def wire(row: Row) -> Row:
         results = row.pop("_task_results")
 
         # Only reduce task results once the whole job has completed.
-        row["result"] = (
-            workload(row["operation"]).reduce(results)
-            if row["status"] == "COMPLETED"
-            else None
-        )
+        row["result"] = workload(row["operation"]).reduce(results) if row["status"] == "COMPLETED" else None
 
     # API responses use camelCase while the database keeps snake_case.
-    return {
-        camel(k): v
-        for k, v in row.items()
-    }
+    return {camel(k): v for k, v in row.items()}
 
 
 def encode_cursor(
@@ -72,10 +65,7 @@ def decode_cursor(
         if value[0] != kind or len(value) != len(types) + 1:
             raise ValueError()
 
-        return tuple(
-            convert(item)
-            for convert, item in zip(types, value[1:])
-        )
+        return tuple(convert(item) for convert, item in zip(types, value[1:]))
 
     except (
         ValueError,
@@ -149,7 +139,6 @@ LEFT JOIN task_attempts a
 
 
 class Jobs:
-
     def __init__(
         self,
         db: Database,
@@ -181,9 +170,7 @@ class Jobs:
 
         # Use the configured default when the client does not set a retry budget.
         retries = (
-            request.max_retries
-            if request.max_retries is not None
-            else self.settings.default_max_retries
+            request.max_retries if request.max_retries is not None else self.settings.default_max_retries
         )
 
         # Normalize the request before hashing it for idempotency checks.
@@ -401,17 +388,11 @@ class Jobs:
                     400,
                 )
 
-            conditions.append(
-                "(j.created_at,j.id)>(%s,%s)"
-            )
+            conditions.append("(j.created_at,j.id)>(%s,%s)")
 
             params.extend(after)
 
-        query = JOB_SELECT + (
-            " WHERE " + " AND ".join(conditions)
-            if conditions
-            else ""
-        )
+        query = JOB_SELECT + (" WHERE " + " AND ".join(conditions) if conditions else "")
 
         return self._page(
             query + " ORDER BY j.created_at,j.id LIMIT %s",
@@ -446,9 +427,7 @@ class Jobs:
 
         query = TASK_SELECT + " WHERE t.job_id=%s"
 
-        params: list[object] = [
-            job_id
-        ]
+        params: list[object] = [job_id]
 
         if after:
             query += " AND (t.partition_index,t.id)>(%s,%s)"
@@ -516,9 +495,7 @@ class Jobs:
         )
 
         return self._page(
-            WORKER_SELECT
-            + (" WHERE w.id>%s" if after else "")
-            + " GROUP BY w.id ORDER BY w.id LIMIT %s",
+            WORKER_SELECT + (" WHERE w.id>%s" if after else "") + " GROUP BY w.id ORDER BY w.id LIMIT %s",
             (
                 *(after or ()),
                 limit + 1,
@@ -548,10 +525,7 @@ class Jobs:
         next_cursor = (
             encode_cursor(
                 kind,
-                [
-                    rows[limit - 1][k]
-                    for k in keys
-                ],
+                [rows[limit - 1][k] for k in keys],
             )
             if len(rows) > limit
             else None

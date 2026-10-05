@@ -26,9 +26,7 @@ def migrate(dsn: str) -> None:
         dsn,
         connect_timeout=3,
     ) as connection:
-        connection.execute(
-            "SELECT pg_advisory_xact_lock(730214001)"
-        )
+        connection.execute("SELECT pg_advisory_xact_lock(730214001)")
 
         # Keep a checksum for every applied migration.
         connection.execute(
@@ -42,13 +40,9 @@ def migrate(dsn: str) -> None:
         )
 
         # File names define migration order.
-        for path in sorted(
-            MIGRATIONS.glob("*.sql")
-        ):
+        for path in sorted(MIGRATIONS.glob("*.sql")):
             content = path.read_bytes()
-            checksum = hashlib.sha256(
-                content
-            ).hexdigest()
+            checksum = hashlib.sha256(content).hexdigest()
 
             row = connection.execute(
                 """
@@ -62,15 +56,11 @@ def migrate(dsn: str) -> None:
             if row:
                 # Applied migrations must never change afterwards.
                 if row[0] != checksum:
-                    raise RuntimeError(
-                        f"Applied migration checksum mismatch: {path.name}"
-                    )
+                    raise RuntimeError(f"Applied migration checksum mismatch: {path.name}")
 
                 continue
 
-            connection.execute(
-                content.decode("utf-8")
-            )
+            connection.execute(content.decode("utf-8"))
 
             connection.execute(
                 """
@@ -88,7 +78,6 @@ def migrate(dsn: str) -> None:
 
 
 class Database:
-
     def __init__(
         self,
         dsn: str,
@@ -115,19 +104,13 @@ class Database:
             with connection.transaction():
                 # READ COMMITTED is enough because row locks protect
                 # the state transitions that require serialization.
-                connection.execute(
-                    "SET TRANSACTION ISOLATION LEVEL READ COMMITTED"
-                )
+                connection.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
 
                 # Avoid waiting indefinitely on contended locks.
-                connection.execute(
-                    "SET LOCAL lock_timeout = '3s'"
-                )
+                connection.execute("SET LOCAL lock_timeout = '3s'")
 
                 # Bound individual transactions so stuck queries fail fast.
-                connection.execute(
-                    "SET LOCAL statement_timeout = '10s'"
-                )
+                connection.execute("SET LOCAL statement_timeout = '10s'")
 
                 yield connection
 
@@ -166,7 +149,6 @@ class Database:
                 )
 
     def ready(self) -> bool:
-
         def check(
             connection: Connection[Row],
         ) -> bool:
@@ -178,17 +160,9 @@ class Database:
             ).fetchall()
 
             # Readiness requires the database schema to match local migrations.
-            expected = {
-                p.name: hashlib.sha256(
-                    p.read_bytes()
-                ).hexdigest()
-                for p in MIGRATIONS.glob("*.sql")
-            }
+            expected = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in MIGRATIONS.glob("*.sql")}
 
-            if {
-                r["version"]: r["checksum"]
-                for r in rows
-            } != expected:
+            if {r["version"]: r["checksum"] for r in rows} != expected:
                 return False
 
             # The service must be able to read and modify every core table.
@@ -229,8 +203,6 @@ def required_row(
 ) -> Row:
     # Missing rows here indicate an internal invariant violation.
     if row is None:
-        raise RuntimeError(
-            "Required database row missing"
-        )
+        raise RuntimeError("Required database row missing")
 
     return row

@@ -43,14 +43,7 @@ def test_specialized_workers_over_http_and_late_compatible_worker(cluster, db):
         {"WORKER_OPERATIONS": "PRIME_COUNT"},
     )
 
-    eventually(
-        lambda: db.run(
-            lambda c: c.execute(
-                "SELECT count(*) AS n FROM workers"
-            ).fetchone()
-        )["n"]
-        == 1
-    )
+    eventually(lambda: db.run(lambda c: c.execute("SELECT count(*) AS n FROM workers").fetchone())["n"] == 1)
 
     pi = create(cluster.api_url, "MONTE_CARLO_PI")
 
@@ -64,10 +57,13 @@ def test_specialized_workers_over_http_and_late_compatible_worker(cluster, db):
         == "COMPLETED"
     )
 
-    assert call(
-        cluster.api_url,
-        "/v1/jobs/" + pi["id"],
-    )["status"] == "QUEUED"
+    assert (
+        call(
+            cluster.api_url,
+            "/v1/jobs/" + pi["id"],
+        )["status"]
+        == "QUEUED"
+    )
 
     cluster.spawn(
         "pi",
@@ -119,19 +115,15 @@ def test_draining_renews_leases_resolves_lost_ack_and_stops_claiming(cluster, db
 
         worker.request_drain()
 
-        first = db.run(
-            lambda c: c.execute(
-                "SELECT lease_expires_at FROM task_attempts"
-            ).fetchone()
-        )["lease_expires_at"]
+        first = db.run(lambda c: c.execute("SELECT lease_expires_at FROM task_attempts").fetchone())[
+            "lease_expires_at"
+        ]
 
         # Draining workers still renew leases for work already in progress.
         eventually(
-            lambda: db.run(
-                lambda c: c.execute(
-                    "SELECT lease_expires_at FROM task_attempts"
-                ).fetchone()
-            )["lease_expires_at"]
+            lambda: db.run(lambda c: c.execute("SELECT lease_expires_at FROM task_attempts").fetchone())[
+                "lease_expires_at"
+            ]
             > first
         )
 
@@ -141,32 +133,30 @@ def test_draining_renews_leases_resolves_lost_ack_and_stops_claiming(cluster, db
         thread.join(timeout=10)
         assert not thread.is_alive()
 
-        assert len(
-            call(
-                cluster.api_url,
-                f"/v1/jobs/{job['id']}/tasks",
-            )["items"]
-        ) == 2
+        assert (
+            len(
+                call(
+                    cluster.api_url,
+                    f"/v1/jobs/{job['id']}/tasks",
+                )["items"]
+            )
+            == 2
+        )
 
-        assert db.run(
-            lambda c: c.execute(
-                "SELECT count(*) AS n FROM task_attempts"
-            ).fetchone()
-        )["n"] == 1
+        assert db.run(lambda c: c.execute("SELECT count(*) AS n FROM task_attempts").fetchone())["n"] == 1
 
         if not timeout:
             assert worker.client.dropped
-            assert call(
-                cluster.api_url,
-                "/v1/jobs/" + job["id"],
-            )["completedTasks"] == 1
+            assert (
+                call(
+                    cluster.api_url,
+                    "/v1/jobs/" + job["id"],
+                )["completedTasks"]
+                == 1
+            )
         else:
             eventually(
-                lambda: db.run(
-                    lambda c: c.execute(
-                        "SELECT status FROM task_attempts"
-                    ).fetchone()
-                )["status"]
+                lambda: db.run(lambda c: c.execute("SELECT status FROM task_attempts").fetchone())["status"]
                 == "EXPIRED"
             )
 
@@ -219,7 +209,4 @@ def test_sigterm_drains_real_process_without_claiming_more(cluster, db):
     # SIGTERM drains current work without claiming the rest of the queue.
     assert any(task["status"] == "COMPLETED" for task in tasks)
     assert any(task["status"] == "QUEUED" for task in tasks)
-    assert not any(
-        task["status"] in ("RUNNING", "ASSIGNED")
-        for task in tasks
-    )
+    assert not any(task["status"] in ("RUNNING", "ASSIGNED") for task in tasks)

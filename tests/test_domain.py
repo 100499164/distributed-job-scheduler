@@ -80,29 +80,41 @@ def test_terminal_states_and_invalid_transitions():
 
 def test_retries_and_backoff():
     # Retry only recoverable failures while retry budget remains.
-    assert retry_state(
-        1,
-        0,
-        "WORKER_LOST",
-    ) == "FAILED"
+    assert (
+        retry_state(
+            1,
+            0,
+            "WORKER_LOST",
+        )
+        == "FAILED"
+    )
 
-    assert retry_state(
-        1,
-        3,
-        "INVALID_PAYLOAD",
-    ) == "FAILED"
+    assert (
+        retry_state(
+            1,
+            3,
+            "INVALID_PAYLOAD",
+        )
+        == "FAILED"
+    )
 
-    assert retry_state(
-        3,
-        3,
-        "TRANSIENT_ERROR",
-    ) == "RETRY_WAIT"
+    assert (
+        retry_state(
+            3,
+            3,
+            "TRANSIENT_ERROR",
+        )
+        == "RETRY_WAIT"
+    )
 
-    assert retry_state(
-        4,
-        3,
-        "TRANSIENT_ERROR",
-    ) == "FAILED"
+    assert (
+        retry_state(
+            4,
+            3,
+            "TRANSIENT_ERROR",
+        )
+        == "FAILED"
+    )
 
     # Exponential backoff is capped at 30 seconds before jitter.
     assert [
@@ -121,10 +133,13 @@ def test_retries_and_backoff():
         30,
     ]
 
-    assert backoff(
-        100000,
-        1.2,
-    ).total_seconds() == 36
+    assert (
+        backoff(
+            100000,
+            1.2,
+        ).total_seconds()
+        == 36
+    )
 
     with pytest.raises(ValueError):
         backoff(
@@ -209,8 +224,4 @@ def test_invalid_partition_and_outcome():
         )
 
     # Fingerprints must be independent of mapping key order.
-    assert fingerprint(
-        {"a": 1, "b": 2}
-    ) == fingerprint(
-        {"b": 2, "a": 1}
-    )
+    assert fingerprint({"a": 1, "b": 2}) == fingerprint({"b": 2, "a": 1})

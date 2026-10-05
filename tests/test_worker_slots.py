@@ -8,14 +8,10 @@ class AmbiguousClient:
         self.keys = []
 
     def post(self, path, body):
-        self.keys.append(
-            body["claimRequestId"]
-        )
+        self.keys.append(body["claimRequestId"])
 
         if len(self.keys) == 1:
-            raise URLError(
-                "lost response"
-            )
+            raise URLError("lost response")
 
         return {
             "attemptId": "same",
@@ -42,21 +38,14 @@ def test_ambiguous_claim_holds_slot_and_reuses_key():
 
         # A lost response leaves the claim unresolved and keeps the slot reserved.
         assert worker.pending_claim is not None
-        assert not worker.semaphore.acquire(
-            blocking=False
-        )
+        assert not worker.semaphore.acquire(blocking=False)
 
         # Retrying must reuse the same claim request ID.
         assert worker._claim()
 
-        assert (
-            client.keys[0]
-            == client.keys[1]
-        )
+        assert client.keys[0] == client.keys[1]
 
-        assert len(
-            worker.slots
-        ) == 1
+        assert len(worker.slots) == 1
 
         # Capacity is exhausted while the recovered assignment holds the slot.
         assert not worker._claim()
@@ -65,18 +54,12 @@ def test_ambiguous_claim_holds_slot_and_reuses_key():
         worker._release("same")
         worker._release("same")
 
-        assert worker.semaphore.acquire(
-            blocking=False
-        )
+        assert worker.semaphore.acquire(blocking=False)
 
-        assert not worker.semaphore.acquire(
-            blocking=False
-        )
+        assert not worker.semaphore.acquire(blocking=False)
 
     finally:
-        worker.executor.shutdown(
-            wait=True
-        )
+        worker.executor.shutdown(wait=True)
 
 
 def test_generic_worker_reports_defensive_errors():
@@ -92,9 +75,7 @@ def test_generic_worker_reports_defensive_errors():
             self.completions = []
 
         def post(self, path, body):
-            self.completions.append(
-                body
-            )
+            self.completions.append(body)
 
     client = CapturingClient()
     worker = Worker(
@@ -116,16 +97,12 @@ def test_generic_worker_reports_defensive_errors():
             future = Future()
 
             try:
-                execute(
-                    payload
-                )
+                execute(payload)
             except (
                 ValueError,
                 ValidationError,
             ) as exc:
-                future.set_exception(
-                    exc
-                )
+                future.set_exception(exc)
 
             slot = Slot(
                 {
@@ -142,15 +119,10 @@ def test_generic_worker_reports_defensive_errors():
             )
 
             # Worker-side validation errors are translated into protocol errors.
-            assert (
-                client.completions[-1]["error"]["code"]
-                == code
-            )
+            assert client.completions[-1]["error"]["code"] == code
 
     finally:
-        worker.executor.shutdown(
-            wait=True
-        )
+        worker.executor.shutdown(wait=True)
 
 
 def test_draining_resolves_existing_ambiguous_claim_but_never_starts_new_one():
@@ -174,25 +146,16 @@ def test_draining_resolves_existing_ambiguous_claim_but_never_starts_new_one():
         assert worker._claim()
 
         # The retry still uses the original claim request ID.
-        assert (
-            client.keys[0]
-            == client.keys[1]
-        )
+        assert client.keys[0] == client.keys[1]
 
-        worker._release(
-            "same"
-        )
+        worker._release("same")
 
         # Once draining has begun, no new claim may be started.
         assert not worker._claim()
 
-        assert len(
-            client.keys
-        ) == 2
+        assert len(client.keys) == 2
 
         assert worker._drain_finished()
 
     finally:
-        worker.executor.shutdown(
-            wait=True
-        )
+        worker.executor.shutdown(wait=True)

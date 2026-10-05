@@ -74,13 +74,7 @@ def execute_sum(
     count = payload.to_exclusive - payload.from_inclusive
 
     # Arithmetic-series formula avoids iterating over the full range.
-    return {
-        "rangeSum": (
-            count
-            * (payload.from_inclusive + payload.to_exclusive - 1)
-            // 2
-        )
-    }
+    return {"rangeSum": (count * (payload.from_inclusive + payload.to_exclusive - 1) // 2)}
 
 
 def execute_monte_carlo(
@@ -136,14 +130,10 @@ def execute(
     executor = EXECUTORS.get(operation)
 
     if executor is None:
-        raise UnsupportedOperation(
-            "Worker does not support this operation"
-        )
+        raise UnsupportedOperation("Worker does not support this operation")
 
     validated = definition.payload_type.model_validate(payload)
-    result = definition.result_type.model_validate(
-        executor(validated, cancelled)
-    )
+    result = definition.result_type.model_validate(executor(validated, cancelled))
 
     definition.validate_result(payload, result)
 

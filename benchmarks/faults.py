@@ -42,9 +42,7 @@ def main():
     args = parser.parse_args()
 
     if not 3 <= args.end <= 50_000_000:
-        parser.error(
-            "Independent sieve supports --end 3..50000000"
-        )
+        parser.error("Independent sieve supports --end 3..50000000")
 
     print(
         f"Fault showcase: {args.fault}",
@@ -71,14 +69,10 @@ def main():
         f"/v1/jobs/{job['id']}/tasks",
     )
 
-    original_payloads = {
-        task["id"]: task["payload"]
-        for task in original_tasks
-    }
+    original_payloads = {task["id"]: task["payload"] for task in original_tasks}
 
     print(
-        f"Job {job['id']}: "
-        f"{len(original_tasks)} persisted PRIME_COUNT tasks",
+        f"Job {job['id']}: {len(original_tasks)} persisted PRIME_COUNT tasks",
         flush=True,
     )
 
@@ -99,11 +93,7 @@ def main():
             )["items"]
 
             old = next(
-                (
-                    attempt
-                    for attempt in history
-                    if attempt["status"] == "RUNNING"
-                ),
+                (attempt for attempt in history if attempt["status"] == "RUNNING"),
                 None,
             )
 
@@ -114,9 +104,7 @@ def main():
             time.sleep(0.05)
 
     if old is None:
-        raise RuntimeError(
-            "No running attempt found; calibrate workload"
-        )
+        raise RuntimeError("No running attempt found; calibrate workload")
 
     print(
         "Original RUNNING attempt: " + json.dumps(old),
@@ -127,14 +115,11 @@ def main():
     fault_wall = datetime.now(timezone.utc).isoformat()
 
     if args.fault == "worker":
-        kill_registered_worker(
-            old["workerId"]
-        )
+        kill_registered_worker(old["workerId"])
 
     elif args.fault == "scheduler-short":
         print(
-            "Restarting scheduler: live leases survive "
-            "if renewal resumes before expiry.",
+            "Restarting scheduler: live leases survive if renewal resumes before expiry.",
             flush=True,
         )
         docker(
@@ -149,9 +134,7 @@ def main():
         )
 
         # Intentional outage used to force leases past their validity window.
-        time.sleep(
-            args.outage_seconds
-        )
+        time.sleep(args.outage_seconds)
 
         docker(
             "start",
@@ -166,21 +149,13 @@ def main():
             f"/v1/tasks/{old['taskId']}/attempts",
         )["items"]
 
-        if (
-            observed_reassignment is None
-            and any(
-                attempt["attemptNumber"] > old["attemptNumber"]
-                for attempt in history
-            )
+        if observed_reassignment is None and any(
+            attempt["attemptNumber"] > old["attemptNumber"] for attempt in history
         ):
-            observed_reassignment = (
-                time.monotonic()
-                - started
-            )
+            observed_reassignment = time.monotonic() - started
 
             print(
-                "Replacement attempt: "
-                + json.dumps(history[-1]),
+                "Replacement attempt: " + json.dumps(history[-1]),
                 flush=True,
             )
 
@@ -203,56 +178,31 @@ def main():
                 "attemptHistory": history,
                 "pollIntervalSeconds": 0.1,
                 "note": (
-                    "Observation latency includes polling; "
-                    "not subtraction of unsynchronized host/DB clocks"
+                    "Observation latency includes polling; not subtraction of unsynchronized host/DB clocks"
                 ),
             }
 
-            expected = {
-                "totalPrimeCount": sequential(
-                    args.end
-                )
-            }
+            expected = {"totalPrimeCount": sequential(args.end)}
 
-            if (
-                state["status"] != "COMPLETED"
-                or state["result"] != expected
-            ):
-                raise RuntimeError(
-                    "Recovery result does not match independent sieve"
-                )
+            if state["status"] != "COMPLETED" or state["result"] != expected:
+                raise RuntimeError("Recovery result does not match independent sieve")
 
             tasks = page_all(
                 args.api,
                 f"/v1/jobs/{job['id']}/tasks",
             )
 
-            current_payloads = {
-                task["id"]: task["payload"]
-                for task in tasks
-            }
+            current_payloads = {task["id"]: task["payload"] for task in tasks}
 
             if current_payloads != original_payloads:
-                raise RuntimeError(
-                    "Task identities or payloads changed across recovery"
-                )
+                raise RuntimeError("Task identities or payloads changed across recovery")
 
             if args.fault == "worker":
-                if (
-                    history[0]["status"] != "EXPIRED"
-                    or history[-1]["workerId"] == old["workerId"]
-                ):
-                    raise RuntimeError(
-                        "Sample invalid: original attempt did not expire "
-                        "onto another worker"
-                    )
+                if history[0]["status"] != "EXPIRED" or history[-1]["workerId"] == old["workerId"]:
+                    raise RuntimeError("Sample invalid: original attempt did not expire onto another worker")
 
                 # Probe the private scheduler from the trusted Compose network.
-                output["staleCompletionRejected"] = (
-                    reject_stale_completion(
-                        old
-                    )
-                )
+                output["staleCompletionRejected"] = reject_stale_completion(old)
 
                 if (
                     call(
@@ -261,28 +211,22 @@ def main():
                     )["result"]
                     != state["result"]
                 ):
-                    raise RuntimeError(
-                        "Stale completion changed canonical result"
-                    )
+                    raise RuntimeError("Stale completion changed canonical result")
 
                 print(
-                    "Stale completion rejected; "
-                    "canonical result unchanged.",
+                    "Stale completion rejected; canonical result unchanged.",
                     flush=True,
                 )
 
             output["verified"] = True
 
             print(
-                f"VERIFIED {state['status']}: "
-                f"{state['result']}; "
-                "task identities and payloads preserved",
+                f"VERIFIED {state['status']}: {state['result']}; task identities and payloads preserved",
                 flush=True,
             )
 
             print(
-                "Attempt history: "
-                + json.dumps(history),
+                "Attempt history: " + json.dumps(history),
                 flush=True,
             )
 
@@ -302,9 +246,7 @@ def main():
 
         time.sleep(0.1)
 
-    raise TimeoutError(
-        "Recovery benchmark exceeded deadline"
-    )
+    raise TimeoutError("Recovery benchmark exceeded deadline")
 
 
 if __name__ == "__main__":

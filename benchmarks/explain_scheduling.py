@@ -35,9 +35,7 @@ def main():
     )
     args = parser.parse_args()
 
-    with PostgresContainer(
-        "postgres:17.6-alpine3.22"
-    ) as postgres:
+    with PostgresContainer("postgres:17.6-alpine3.22") as postgres:
         dsn = postgres.get_connection_url().replace(
             "postgresql+psycopg2://",
             "postgresql://",
@@ -134,9 +132,7 @@ def main():
             # Compare against the same fixture without the eligibility index.
             with db.pool.connection() as c:
                 with c.transaction(force_rollback=True):
-                    c.execute(
-                        "DROP INDEX tasks_eligible_per_job"
-                    )
+                    c.execute("DROP INDEX tasks_eligible_per_job")
                     result["withoutIndex"] = plans(c)
 
             args.output.parent.mkdir(

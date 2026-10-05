@@ -90,10 +90,13 @@ def test_start_and_completion_idempotence_even_after_offline(db):
     )
 
     # Starting the same attempt again is idempotent.
-    assert scheduler.start(
-        attempt_id,
-        worker,
-    ) == first
+    assert (
+        scheduler.start(
+            attempt_id,
+            worker,
+        )
+        == first
+    )
 
     result = scheduler.complete(
         attempt_id,
@@ -112,10 +115,13 @@ def test_start_and_completion_idempotence_even_after_offline(db):
     )
 
     # An already accepted completion remains replayable even if the worker goes offline.
-    assert scheduler.complete(
-        attempt_id,
-        completion(worker, assignment),
-    ) == result
+    assert (
+        scheduler.complete(
+            attempt_id,
+            completion(worker, assignment),
+        )
+        == result
+    )
 
     # Replaying the attempt with a different result is a conflict.
     with pytest.raises(Conflict):
@@ -130,14 +136,9 @@ def test_start_and_completion_idempotence_even_after_offline(db):
 
     state = jobs.job(job["id"])
 
-    assert (
-        state["status"] == "COMPLETED"
-        and state["completedTasks"] == 1
-    )
+    assert state["status"] == "COMPLETED" and state["completedTasks"] == 1
 
-    assert state["result"] == {
-        "totalPrimeCount": 25
-    }
+    assert state["result"] == {"totalPrimeCount": 25}
 
 
 @pytest.mark.integration
@@ -169,9 +170,7 @@ def test_last_completions_concurrent(db):
             ),
         )
 
-    with ThreadPoolExecutor(
-        max_workers=2
-    ) as pool:
+    with ThreadPoolExecutor(max_workers=2) as pool:
         list(
             pool.map(
                 finish,
@@ -179,15 +178,9 @@ def test_last_completions_concurrent(db):
             )
         )
 
-    assert jobs.job(
-        job["id"]
-    )["result"] == {
-        "totalPrimeCount": 25
-    }
+    assert jobs.job(job["id"])["result"] == {"totalPrimeCount": 25}
 
-    assert jobs.job(
-        job["id"]
-    )["completedTasks"] == 2
+    assert jobs.job(job["id"])["completedTasks"] == 2
 
 
 @pytest.mark.integration
@@ -212,9 +205,7 @@ def test_lost_completion_ack_and_wrong_owner(db):
 
     def drop(name, c):
         if name == "completion_after_commit":
-            raise ConnectionError(
-                "ACK lost after commit"
-            )
+            raise ConnectionError("ACK lost after commit")
 
     scheduler.hook = drop
 
@@ -231,14 +222,15 @@ def test_lost_completion_ack_and_wrong_owner(db):
     scheduler.hook = lambda *args: None
 
     # Retrying the same completion must recover the committed result.
-    assert scheduler.complete(
-        attempt_id,
-        completion(
-            worker,
-            assignment,
-        ),
-    )["status"] == "SUCCEEDED"
+    assert (
+        scheduler.complete(
+            attempt_id,
+            completion(
+                worker,
+                assignment,
+            ),
+        )["status"]
+        == "SUCCEEDED"
+    )
 
-    assert jobs.job(
-        job["id"]
-    )["completedTasks"] == 1
+    assert jobs.job(job["id"])["completedTasks"] == 1

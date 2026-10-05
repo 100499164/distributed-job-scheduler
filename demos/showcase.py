@@ -92,21 +92,13 @@ def verify(case, job, tasks):
         )
 
     else:
-        samples = sum(
-            task["result"]["samples"]
-            for task in tasks
-        )
-        inside = sum(
-            task["result"]["insideCircle"]
-            for task in tasks
-        )
+        samples = sum(task["result"]["samples"] for task in tasks)
+        inside = sum(task["result"]["insideCircle"] for task in tasks)
 
         require(
             all(
                 task["result"]["samples"] == task["payload"]["samples"]
-                and 0
-                <= task["result"]["insideCircle"]
-                <= task["result"]["samples"]
+                and 0 <= task["result"]["insideCircle"] <= task["result"]["samples"]
                 for task in tasks
             ),
             "Invalid sample accounting",
@@ -129,8 +121,7 @@ def verify(case, job, tasks):
 
         # Fixed seeds and partition count make this reproducible.
         require(
-            math.isfinite(result["piEstimate"])
-            and abs(result["piEstimate"] - math.pi) < 0.02,
+            math.isfinite(result["piEstimate"]) and abs(result["piEstimate"] - math.pi) < 0.02,
             "Pi outside demonstration tolerance",
         )
 
@@ -141,10 +132,7 @@ def run(api, timeout=600):
         flush=True,
     )
 
-    keys = [
-        str(uuid4())
-        for _ in CASES
-    ]
+    keys = [str(uuid4()) for _ in CASES]
 
     with ThreadPoolExecutor(max_workers=3) as pool:
         jobs = list(
@@ -172,10 +160,7 @@ def run(api, timeout=600):
 
     for case, key, job in zip(CASES, keys, jobs):
         path = f"/v1/jobs/{job['id']}/tasks"
-        before = {
-            task["id"]
-            for task in page_all(api, path)
-        }
+        before = {task["id"] for task in page_all(api, path)}
 
         duplicate = call(
             api,
@@ -190,12 +175,7 @@ def run(api, timeout=600):
         )
 
         require(
-            before
-            == {
-                task["id"]
-                for task in page_all(api, path)
-            }
-            and len(before) == case["taskCount"],
+            before == {task["id"] for task in page_all(api, path)} and len(before) == case["taskCount"],
             "Tasks duplicated",
         )
 
@@ -211,14 +191,11 @@ def run(api, timeout=600):
             )
         except HTTPError as exc:
             require(
-                exc.code == 409
-                and json.load(exc)["code"] == "IDEMPOTENCY_CONFLICT",
+                exc.code == 409 and json.load(exc)["code"] == "IDEMPOTENCY_CONFLICT",
                 "Wrong conflict response",
             )
         else:
-            raise RuntimeError(
-                "Changed content was accepted with the same key"
-            )
+            raise RuntimeError("Changed content was accepted with the same key")
 
         print(
             f"  {case['payload']['operation']}: "
@@ -288,8 +265,7 @@ def run(api, timeout=600):
                         ).add(operation)
 
                 print(
-                    f"  VERIFIED {operation}: "
-                    f"{json.dumps(job['result'])}",
+                    f"  VERIFIED {operation}: {json.dumps(job['result'])}",
                     flush=True,
                 )
 
@@ -321,9 +297,7 @@ def run(api, timeout=600):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description=__doc__
-    )
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--api",
         default="http://127.0.0.1:8080",

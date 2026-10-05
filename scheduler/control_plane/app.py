@@ -56,7 +56,6 @@ def error_response(code, message, status, identifier=None):
 
 
 class ProtocolMiddleware:
-
     def __init__(self, app, limit, metrics):
         self.app = app
         self.limit = limit
@@ -75,10 +74,7 @@ class ProtocolMiddleware:
         async def send_with_id(message):
             # Add the request ID unless the response already has one.
             if message["type"] == "http.response.start":
-                has_request_id = any(
-                    name.lower() == b"x-request-id"
-                    for name, _ in message["headers"]
-                )
+                has_request_id = any(name.lower() == b"x-request-id" for name, _ in message["headers"])
 
                 if not has_request_id:
                     message["headers"].append(
@@ -185,9 +181,7 @@ class ProtocolMiddleware:
             self.metrics.latency.labels(
                 route,
                 scope["method"],
-            ).observe(
-                time.monotonic() - started
-            )
+            ).observe(time.monotonic() - started)
 
             request_id.reset(token)
 
@@ -204,9 +198,7 @@ def create_app(role=None, dsn=None, settings=None):
     if os.getenv("DATABASE_PASSWORD_FILE"):
         from psycopg.conninfo import make_conninfo
 
-        password = Path(
-            os.environ["DATABASE_PASSWORD_FILE"]
-        ).read_text().strip()
+        password = Path(os.environ["DATABASE_PASSWORD_FILE"]).read_text().strip()
 
         dsn = make_conninfo(
             dsn,
@@ -251,7 +243,6 @@ def create_app(role=None, dsn=None, settings=None):
                         migrate(dsn)
 
                     if db.ready():
-
                         # Recover stale work before the scheduler becomes ready.
                         if role == "scheduler":
                             recovery.sweep()
@@ -287,11 +278,8 @@ def create_app(role=None, dsn=None, settings=None):
                 stop.wait(1)
 
             if role == "scheduler":
-
                 # Periodically recover work left behind by dead workers.
-                while not stop.wait(
-                    settings.recovery_interval_ms / 1000
-                ):
+                while not stop.wait(settings.recovery_interval_ms / 1000):
                     try:
                         recovery.sweep()
 
@@ -426,9 +414,7 @@ def create_app(role=None, dsn=None, settings=None):
         identifier = request.scope.get(
             "state",
             {},
-        ).get(
-            "request_id"
-        )
+        ).get("request_id")
 
         exception_event(
             "internal_error",
@@ -454,10 +440,7 @@ def create_app(role=None, dsn=None, settings=None):
     @app.get("/health/ready")
     def ready(request: Request):
         try:
-            ok = (
-                request.app.state.initialized
-                and request.app.state.db.ready()
-            )
+            ok = request.app.state.initialized and request.app.state.db.ready()
 
         except (
             psycopg.Error,
@@ -476,9 +459,7 @@ def create_app(role=None, dsn=None, settings=None):
     def scrape(request: Request):
         # DB-backed metrics only make sense once startup has finished.
         if request.app.state.initialized:
-            metrics.refresh(
-                request.app.state.db
-            )
+            metrics.refresh(request.app.state.db)
 
         return Response(
             generate_latest(metrics.registry),
@@ -559,9 +540,7 @@ def create_app(role=None, dsn=None, settings=None):
             request: Request,
             job_id: UUID,
         ):
-            return jobs(request).job(
-                job_id
-            )
+            return jobs(request).job(job_id)
 
         @app.get("/v1/jobs/{job_id}/tasks")
         def list_tasks(
@@ -584,18 +563,14 @@ def create_app(role=None, dsn=None, settings=None):
             request: Request,
             task_id: UUID,
         ):
-            return jobs(request).task(
-                task_id
-            )
+            return jobs(request).task(task_id)
 
         @app.get("/v1/tasks/{task_id}/attempts")
         def get_attempts(
             request: Request,
             task_id: UUID,
         ):
-            return jobs(request).attempts(
-                task_id
-            )
+            return jobs(request).attempts(task_id)
 
         @app.get("/v1/workers")
         def list_workers(
@@ -616,9 +591,7 @@ def create_app(role=None, dsn=None, settings=None):
             request: Request,
             worker_id: UUID,
         ):
-            return jobs(request).worker(
-                worker_id
-            )
+            return jobs(request).worker(worker_id)
 
     # -------------------------------------------------------------------------
     # Internal scheduler API
@@ -637,13 +610,9 @@ def create_app(role=None, dsn=None, settings=None):
             request: Request,
             body: Register,
         ):
-            return scheduler(request).register(
-                body
-            )
+            return scheduler(request).register(body)
 
-        @app.post(
-            "/internal/v1/workers/{worker_id}/heartbeat"
-        )
+        @app.post("/internal/v1/workers/{worker_id}/heartbeat")
         def heartbeat(
             request: Request,
             worker_id: UUID,
@@ -659,20 +628,12 @@ def create_app(role=None, dsn=None, settings=None):
             request: Request,
             body: Claim,
         ):
-            result = scheduler(request).claim(
-                body
-            )
+            result = scheduler(request).claim(body)
 
             # No assignment right now is not an error.
-            return (
-                result
-                if result
-                else Response(status_code=204)
-            )
+            return result if result else Response(status_code=204)
 
-        @app.post(
-            "/internal/v1/attempts/{attempt_id}/start"
-        )
+        @app.post("/internal/v1/attempts/{attempt_id}/start")
         def start(
             request: Request,
             attempt_id: UUID,
@@ -683,9 +644,7 @@ def create_app(role=None, dsn=None, settings=None):
                 body.worker_id,
             )
 
-        @app.post(
-            "/internal/v1/attempts/{attempt_id}/completion"
-        )
+        @app.post("/internal/v1/attempts/{attempt_id}/completion")
         def complete(
             request: Request,
             attempt_id: UUID,

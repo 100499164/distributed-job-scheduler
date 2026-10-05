@@ -78,10 +78,7 @@ def main():
                     f"/internal/v1/workers/{worker}/heartbeat",
                     {"activeAttemptIds": []},
                 )
-                beat_at = (
-                    time.monotonic()
-                    + registration["settings"]["heartbeatIntervalMs"] / 1000
-                )
+                beat_at = time.monotonic() + registration["settings"]["heartbeatIntervalMs"] / 1000
 
             start = time.monotonic()
 
@@ -125,11 +122,7 @@ def main():
     started = time.monotonic()
 
     with ThreadPoolExecutor(max_workers=args.clients) as pool:
-        samples = [
-            sample
-            for batch in pool.map(client_run, range(args.clients))
-            for sample in batch
-        ]
+        samples = [sample for batch in pool.map(client_run, range(args.clients)) for sample in batch]
 
     elapsed = time.monotonic() - started
 
@@ -153,10 +146,7 @@ def main():
         "claimSeconds",
         "completionSeconds",
     ):
-        values = [
-            sample[key]
-            for sample in samples
-        ]
+        values = [sample[key] for sample in samples]
 
         output[key] = {
             "p50": statistics.median(values),

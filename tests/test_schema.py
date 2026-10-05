@@ -37,11 +37,7 @@ def test_schema_constraints_and_readiness(db, dsn):
 
     # Transactions intentionally run at READ COMMITTED isolation.
     assert (
-        db.run(
-            lambda c: c.execute(
-                "SHOW transaction_isolation"
-            ).fetchone()
-        )["transaction_isolation"]
+        db.run(lambda c: c.execute("SHOW transaction_isolation").fetchone())["transaction_isolation"]
         == "read committed"
     )
 
@@ -55,10 +51,7 @@ def test_schema_constraints_and_readiness(db, dsn):
         ).fetchall()
     )
 
-    names = {
-        row["indexname"]
-        for row in indexes
-    }
+    names = {row["indexname"] for row in indexes}
 
     # Critical correctness and scheduling indexes must exist.
     assert {

@@ -50,11 +50,7 @@ def test_registration_idempotent_immutable_and_expired(db):
 
     # The same worker identity cannot change immutable registration data.
     with pytest.raises(Conflict):
-        scheduler.register(
-            req.model_copy(
-                update={"capacity": 2}
-            )
-        )
+        scheduler.register(req.model_copy(update={"capacity": 2}))
 
     db.run(
         lambda c: c.execute(
@@ -88,10 +84,7 @@ def test_many_workers_and_repeated_claim(db):
         Settings(),
     )
 
-    workers = [
-        register(scheduler)
-        for _ in range(8)
-    ]
+    workers = [register(scheduler) for _ in range(8)]
 
     barrier = Barrier(8)
 
@@ -111,9 +104,7 @@ def test_many_workers_and_repeated_claim(db):
 
         return first
 
-    with ThreadPoolExecutor(
-        max_workers=8
-    ) as pool:
+    with ThreadPoolExecutor(max_workers=8) as pool:
         assigned = list(
             pool.map(
                 claim,
@@ -122,21 +113,19 @@ def test_many_workers_and_repeated_claim(db):
         )
 
     # Every worker must receive a different task.
-    assert len(
-        {
-            result["taskId"]
-            for result in assigned
-        }
-    ) == 8
+    assert len({result["taskId"] for result in assigned}) == 8
 
-    assert db.run(
-        lambda c: c.execute(
-            """
+    assert (
+        db.run(
+            lambda c: c.execute(
+                """
             SELECT sum(attempt_count) AS n
             FROM tasks
             """
-        ).fetchone()
-    )["n"] == 8
+            ).fetchone()
+        )["n"]
+        == 8
+    )
 
 
 def test_two_claims_compete_for_one_slot(db):
@@ -170,9 +159,7 @@ def test_two_claims_compete_for_one_slot(db):
         except Conflict as exc:
             return exc.code
 
-    with ThreadPoolExecutor(
-        max_workers=2
-    ) as pool:
+    with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(
             pool.map(
                 claim,
@@ -181,10 +168,7 @@ def test_two_claims_compete_for_one_slot(db):
         )
 
     # A capacity-one worker can only hold one concurrent assignment.
-    assert sum(
-        isinstance(result, dict)
-        for result in results
-    ) == 1
+    assert sum(isinstance(result, dict) for result in results) == 1
 
     assert "CAPACITY_EXHAUSTED" in results
 
@@ -215,9 +199,7 @@ def test_empty_claim_not_sticky_and_rollback(db):
 
     def hook(name, c):
         if name == "claim_before_commit":
-            raise RuntimeError(
-                "injected rollback"
-            )
+            raise RuntimeError("injected rollback")
 
     scheduler.hook = hook
 
@@ -227,6 +209,4 @@ def test_empty_claim_not_sticky_and_rollback(db):
 
     scheduler.hook = lambda name, c: None
 
-    assert scheduler.claim(
-        req
-    )["attemptNumber"] == 1
+    assert scheduler.claim(req)["attemptNumber"] == 1

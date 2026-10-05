@@ -19,9 +19,7 @@ def wait_for(predicate, timeout=120, description="condition"):
             return value
         time.sleep(0.1)
 
-    raise TimeoutError(
-        f"Deadline exceeded waiting for {description}"
-    )
+    raise TimeoutError(f"Deadline exceeded waiting for {description}")
 
 
 def terminal(api, job_id, timeout=120):
@@ -34,11 +32,7 @@ def terminal(api, job_id, timeout=120):
             job["status"] != "FAILED",
             f"Job {job_id} failed",
         )
-        return (
-            job
-            if job["status"] == "COMPLETED"
-            else None
-        )
+        return job if job["status"] == "COMPLETED" else None
 
     return wait_for(
         check,
@@ -85,8 +79,7 @@ def run_fairness(api, end=5_000_000, count=120, timeout=180):
     )
 
     print(
-        f"Large job {large['id']}: "
-        f"{large_before['completedTasks']}/{count} completed",
+        f"Large job {large['id']}: {large_before['completedTasks']}/{count} completed",
         flush=True,
     )
 
@@ -97,8 +90,7 @@ def run_fairness(api, end=5_000_000, count=120, timeout=180):
     )
 
     print(
-        f"Small job submitted: {small['id']} "
-        "(same PRIME_COUNT pool)",
+        f"Small job submitted: {small['id']} (same PRIME_COUNT pool)",
         flush=True,
     )
 
@@ -129,8 +121,7 @@ def run_fairness(api, end=5_000_000, count=120, timeout=180):
     # Fairness means the later small job gets capacity before the large one finishes.
     require(
         large_during["status"] != "COMPLETED",
-        "Sample inconclusive: large job already finished; "
-        "increase --end or reduce worker count",
+        "Sample inconclusive: large job already finished; increase --end or reduce worker count",
     )
 
     print(
@@ -154,18 +145,12 @@ def run_fairness(api, end=5_000_000, count=120, timeout=180):
 
     # Verify both distributed results independently.
     require(
-        small_final["result"]
-        == {
-            "totalPrimeCount": sequential(100_000)
-        },
+        small_final["result"] == {"totalPrimeCount": sequential(100_000)},
         "Small job reference mismatch",
     )
 
     require(
-        large_final["result"]
-        == {
-            "totalPrimeCount": sequential(end)
-        },
+        large_final["result"] == {"totalPrimeCount": sequential(end)},
         "Large job reference mismatch",
     )
 
@@ -179,9 +164,7 @@ def run_fairness(api, end=5_000_000, count=120, timeout=180):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description=__doc__
-    )
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--api",
         default="http://127.0.0.1:8080",
@@ -204,21 +187,13 @@ def main():
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path(
-            "verification/fairness.json"
-        ),
+        default=Path("verification/fairness.json"),
     )
 
     args = parser.parse_args()
 
-    if (
-        not 3 <= args.end <= 50_000_000
-        or not 1 <= args.tasks <= min(10000, args.end - 2)
-    ):
-        parser.error(
-            "Use a nonempty task partition and "
-            "--end <= 50000000 for the reference sieve"
-        )
+    if not 3 <= args.end <= 50_000_000 or not 1 <= args.tasks <= min(10000, args.end - 2):
+        parser.error("Use a nonempty task partition and --end <= 50000000 for the reference sieve")
 
     result = run_fairness(
         args.api,

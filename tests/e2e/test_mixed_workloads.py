@@ -16,14 +16,7 @@ def test_showcase_with_shared_worker_processes(cluster, db):
     for index in range(3):
         cluster.worker(f"mixed-{index}")
 
-    eventually(
-        lambda: db.run(
-            lambda c: c.execute(
-                "SELECT count(*) AS n FROM workers"
-            ).fetchone()
-        )["n"]
-        == 3
-    )
+    eventually(lambda: db.run(lambda c: c.execute("SELECT count(*) AS n FROM workers").fetchone())["n"] == 3)
 
     result = subprocess.run(
         [
@@ -133,10 +126,7 @@ def test_http_rejects_mismatched_completion(cluster):
             },
         )
 
-    assert (
-        error.value.status == 400
-        and error.value.code == "INVALID_RESULT"
-    )
+    assert error.value.status == 400 and error.value.code == "INVALID_RESULT"
 
     client.post(
         path + "/completion",
