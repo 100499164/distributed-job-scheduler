@@ -70,7 +70,7 @@ The API is available at:
 http://127.0.0.1:8080
 ```
 
-PostgreSQL and the scheduler remain inside the Compose network.
+PostgreSQL remains internal to the Compose network. The scheduler is also available locally at `http://127.0.0.1:8081` for benchmark tooling.
 
 On the first startup, the deployment creates a random database password in the `db-auth` volume. PostgreSQL data is stored in `pgdata`.
 
@@ -85,18 +85,18 @@ keeps both volumes.
 To run a basic demonstration:
 
 ```sh
-python deploy/demo.py
+python demos/demo.py
 ```
 
 For a larger mixed-workload example:
 
 ```sh
-python deploy/showcase.py
+python demos/showcase.py
 ```
 
 The basic demo creates a job, repeats the request to check idempotency, follows its progress and compares the final prime count against an independent sequential sieve.
 
-On Windows, `deploy/verify.ps1` can be used to start the stack and run the demo.
+On Windows, `scripts/verify.ps1` can be used to start the stack and run the demos.
 
 
 ## Creating a job
@@ -353,10 +353,10 @@ Several scripts are included to exercise different parts of the system.
 
 | Demo                          | Command                                                                                                            |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Basic prime-count demo        | `python deploy/demo.py`                                                                                            |
-| Mixed workloads               | `python deploy/showcase.py`                                                                                        |
-| Capability-aware worker pools | `python deploy/capability_showcase.py`                                                                             |
-| Fair scheduling example       | `python deploy/fairness_showcase.py`                                                                               |
+| Basic prime-count demo        | `python demos/demo.py`                                                                                            |
+| Mixed workloads               | `python demos/showcase.py`                                                                                        |
+| Capability-aware worker pools | `python demos/capability_showcase.py`                                                                             |
+| Fair scheduling example       | `python demos/fairness_showcase.py`                                                                               |
 | Worker failure                | `python benchmarks/faults.py --fault worker --output verification/worker-fault.json`                               |
 | Short scheduler restart       | `python benchmarks/faults.py --fault scheduler-short --output verification/scheduler-short.json`                   |
 | Long scheduler restart        | `python benchmarks/faults.py --fault scheduler-long --outage-seconds 35 --output verification/scheduler-long.json` |
@@ -464,7 +464,7 @@ Run the static checks:
 ```sh
 ruff check .
 ruff format --check .
-mypy
+mypy scheduler
 ```
 
 Run the test suite:
@@ -505,7 +505,7 @@ The E2E tests run real worker/control-plane processes and validate recovery beha
 
 ## Benchmarks
 
-The repository includes a few benchmarks aimed at understanding scheduler behavior rather than producing a single headline number.
+The repository includes benchmarks aimed at understanding scheduler behavior rather than producing a single headline number.
 
 ### CPU workload
 
@@ -517,6 +517,30 @@ python benchmarks/run.py
 
 `RANGE_SUM` intentionally uses an O(1) formula and is therefore not useful as a CPU scaling benchmark.
 
+A recent local Docker run with 64 tasks produced:
+
+| Workers | Median | Speedup | Efficiency |
+| ---: | ---: | ---: | ---: |
+| 1 | 4.49 s | 1.00x | 100% |
+| 2 | 2.47 s | 1.82x | 91% |
+| 4 | 1.43 s | 3.13x | 78% |
+| 8 | 1.01 s | 4.47x | 56% |
+
+The decreasing efficiency at higher worker counts reflects coordination, scheduling and container overhead.
+
+### Control-plane overhead
+
+```sh
+docker compose stop worker
+python benchmarks/control_plane.py
+```
+
+This benchmark uses synthetic workers that claim, start and complete tasks without performing the actual workload.
+
+That isolates scheduler and protocol overhead from prime computation.
+
+The benchmark should be run without real workers or unrelated queued work so that all tasks are consumed by the synthetic clients.
+
 ### Scheduler selection
 
 ```sh
@@ -526,6 +550,26 @@ python benchmarks/selection_scaling.py
 This measures task-selection latency as the number of jobs, historical attempts and locked candidates increases.
 
 The benchmark also records the number of SQL queries needed for each selection.
+
+A recent local run without historical attempts produced:
+
+**No contention**
+
+| Jobs | p50 | p95 | Queries |
+| ---: | ---: | ---: | ---: |
+| 10 | 1.87 ms | 2.47 ms | 2 |
+| 100 | 1.60 ms | 2.11 ms | 2 |
+| 1,000 | 5.60 ms | 6.26 ms | 2 |
+| 5,000 | 22.29 ms | 24.78 ms | 2 |
+
+**Lock contention**
+
+| Scenario | p50 | p95 | Queries |
+| --- | ---: | ---: | ---: |
+| 100 jobs, 99 locked | 14.54 ms | 18.64 ms | 101 |
+| 5,000 jobs, 4,999 locked | 576.93 ms | 598.97 ms | 5,001 |
+
+The no-contention cases keep query count constant, while the locked-job cases intentionally expose the cost of scanning through unavailable candidates.
 
 ### Query plans
 
@@ -537,23 +581,25 @@ This creates a temporary PostgreSQL instance through Testcontainers and compares
 
 The script runs against a disposable database and does not modify the normal Compose database.
 
-### Sample results
+In a recent local run, locking an eligible task took approximately:
 
-On a local Docker environment, the scheduler selection benchmark showed:
+- with the `tasks_eligible_per_job` index: ~0.05 ms;
+- without the index: ~2.71 ms;
+- without the index, PostgreSQL filtered roughly 18,800 rows before finding the task.
 
-| Scenario                |      p50 |      p95 | Queries |
-| ----------------------- | -------: | -------: | ------: |
-| 10 jobs, no contention  |  2.57 ms |  2.75 ms |       2 |
-| 100 jobs, no contention |  2.12 ms |  2.34 ms |       2 |
-| 100 jobs, 99 locked     | 14.05 ms | 14.94 ms |     101 |
+### Fault recovery
 
-The PostgreSQL query-plan benchmark also showed the impact of the `tasks_eligible_per_job` index when locking an eligible task:
+```sh
+python benchmarks/faults.py --fault worker
+python benchmarks/faults.py --fault scheduler-short
+python benchmarks/faults.py --fault scheduler-long
+```
 
-* with the index: ~0.05 ms execution time;
-* without the index: ~2.33 ms;
-* without the index, PostgreSQL filtered roughly 18,800 rows before finding the task.
+These scenarios exercise recovery behavior under controlled failures.
 
-These numbers are environment-dependent and are included as a reference rather than a performance guarantee.
+They verify cases such as worker replacement, lease expiration, scheduler restarts and stale completion rejection while preserving task identities and payloads.
+
+Benchmark numbers are environment-dependent and are included as reference measurements rather than performance guarantees.
 
 
 ## Database migrations
@@ -573,6 +619,8 @@ Current migrations include:
 * `001_initial.sql` — initial scheduler schema;
 * `002_workloads.sql` — additional workloads;
 * `003_worker_capabilities.sql` — worker capability routing and scheduling index.
+
+`scheduler/persistence/schema.sql` provides a reference snapshot of the current database schema. Runtime schema changes are applied exclusively through the immutable migration files.
 
 Migration application is serialized with a PostgreSQL advisory lock so multiple control-plane processes do not attempt to install the schema at the same time.
 
