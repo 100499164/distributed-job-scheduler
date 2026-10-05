@@ -62,6 +62,9 @@ services:
       MAX_EXECUTION_MS: ${MAX_EXECUTION_MS:-300000}
       RECOVERY_INTERVAL_MS: ${RECOVERY_INTERVAL_MS:-1000}
       DEFAULT_MAX_RETRIES: ${DEFAULT_MAX_RETRIES:-3}
+    ports:
+      - "127.0.0.1:8081:8080"
+    networks: [backend, public]
     depends_on:
       api:
         condition: service_healthy
