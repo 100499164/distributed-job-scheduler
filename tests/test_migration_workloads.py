@@ -15,134 +15,493 @@ from scheduler.protocol.models import CreateJob
 
 
 @pytest.mark.integration
-def test_upgrade_original_schema_with_existing_job(dsn, tmp_path, monkeypatch):
+def test_upgrade_original_schema_with_existing_job(
+    dsn,
+    tmp_path,
+    monkeypatch,
+):
     schema = "migration_" + uuid4().hex
-    with psycopg.connect(dsn, autocommit=True) as connection:
-        connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
-    isolated = make_conninfo(dsn, options=f"-c search_path={schema}")
+
+    with psycopg.connect(
+        dsn,
+        autocommit=True,
+    ) as connection:
+        connection.execute(
+            sql.SQL(
+                "CREATE SCHEMA {}"
+            ).format(
+                sql.Identifier(schema)
+            )
+        )
+
+    isolated = make_conninfo(
+        dsn,
+        options=f"-c search_path={schema}",
+    )
+
     migrations = database.MIGRATIONS
-    original = (migrations / "001_initial.sql").read_bytes()
+    original = (
+        migrations / "001_initial.sql"
+    ).read_bytes()
+
+    # Historical migrations are immutable once published.
     assert (
-        hashlib.sha256(original).hexdigest()
+        hashlib.sha256(
+            original
+        ).hexdigest()
         == "cc41456ebc1374f87f2451363114773c578e50f0622aaebff8ae6b1a46da2983"
     )
-    (tmp_path / "001_initial.sql").write_bytes(original)
+
+    # Start from a real installation containing only migration 001.
+    (
+        tmp_path / "001_initial.sql"
+    ).write_bytes(
+        original
+    )
+
     db = None
+
     try:
-        monkeypatch.setattr(database, "MIGRATIONS", tmp_path)
+        monkeypatch.setattr(
+            database,
+            "MIGRATIONS",
+            tmp_path,
+        )
+
         database.migrate(isolated)
-        db = database.Database(isolated)
-        jobs = Jobs(db, Settings())
-        request = CreateJob(name="existing", taskCount=2, payload={"fromInclusive": 2, "toExclusive": 100})
-        job, _ = jobs.create(request, "existing")
-        tasks = jobs.list_tasks(job["id"], 200)
-        before = db.run(lambda c: c.execute("SELECT * FROM schema_migrations").fetchall())
-        with pytest.raises(psycopg.errors.CheckViolation):
-            db.run(lambda c: c.execute("UPDATE jobs SET operation='RANGE_SUM' WHERE id=%s", (job["id"],)))
-        monkeypatch.setattr(database, "MIGRATIONS", migrations)
+
+        db = database.Database(
+            isolated
+        )
+
+        jobs = Jobs(
+            db,
+            Settings(),
+        )
+
+        request = CreateJob(
+            name="existing",
+            taskCount=2,
+            payload={
+                "fromInclusive": 2,
+                "toExclusive": 100,
+            },
+        )
+
+        job, _ = jobs.create(
+            request,
+            "existing",
+        )
+
+        tasks = jobs.list_tasks(
+            job["id"],
+            200,
+        )
+
+        before = db.run(
+            lambda c: c.execute(
+                """
+                SELECT *
+                FROM schema_migrations
+                """
+            ).fetchall()
+        )
+
+        # The original schema only allows PRIME_COUNT jobs.
+        with pytest.raises(
+            psycopg.errors.CheckViolation
+        ):
+            db.run(
+                lambda c: c.execute(
+                    """
+                    UPDATE jobs
+                    SET operation = 'RANGE_SUM'
+                    WHERE id = %s
+                    """,
+                    (job["id"],),
+                )
+            )
+
+        # Restore the complete migration set and upgrade the old installation.
+        monkeypatch.setattr(
+            database,
+            "MIGRATIONS",
+            migrations,
+        )
+
         database.migrate(isolated)
+
+        # Running migrations again must be idempotent.
         database.migrate(isolated)
+
         assert db.ready()
-        assert jobs.create(request, "existing") == (job, False)
-        assert jobs.list_tasks(job["id"], 200) == tasks
+
+        # Existing data and idempotency semantics must survive the upgrade.
+        assert jobs.create(
+            request,
+            "existing",
+        ) == (
+            job,
+            False,
+        )
+
+        assert jobs.list_tasks(
+            job["id"],
+            200,
+        ) == tasks
+
+        # Migration 001 remains recorded exactly as it was before the upgrade.
         assert (
             db.run(
                 lambda c: c.execute(
-                    "SELECT * FROM schema_migrations WHERE version='001_initial.sql'"
+                    """
+                    SELECT *
+                    FROM schema_migrations
+                    WHERE version = '001_initial.sql'
+                    """
                 ).fetchall()
             )
             == before
         )
+
+        # New workloads become available after applying later migrations.
         for payload in (
-            {"operation": "RANGE_SUM", "fromInclusive": 1, "toExclusive": 10},
-            {"operation": "MONTE_CARLO_PI", "samples": 10, "seed": 0},
+            {
+                "operation": "RANGE_SUM",
+                "fromInclusive": 1,
+                "toExclusive": 10,
+            },
+            {
+                "operation": "MONTE_CARLO_PI",
+                "samples": 10,
+                "seed": 0,
+            },
         ):
-            jobs.create(CreateJob(name="new", taskCount=2, payload=payload), payload["operation"])
-        with pytest.raises(psycopg.errors.CheckViolation):
-            db.run(lambda c: c.execute("UPDATE jobs SET operation='UNKNOWN' WHERE id=%s", (job["id"],)))
+            jobs.create(
+                CreateJob(
+                    name="new",
+                    taskCount=2,
+                    payload=payload,
+                ),
+                payload["operation"],
+            )
+
+        # Unsupported operations must still be rejected by the final schema.
+        with pytest.raises(
+            psycopg.errors.CheckViolation
+        ):
+            db.run(
+                lambda c: c.execute(
+                    """
+                    UPDATE jobs
+                    SET operation = 'UNKNOWN'
+                    WHERE id = %s
+                    """,
+                    (job["id"],),
+                )
+            )
+
     finally:
         if db:
             db.close()
-        with psycopg.connect(dsn, autocommit=True) as connection:
-            connection.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
+
+        with psycopg.connect(
+            dsn,
+            autocommit=True,
+        ) as connection:
+            connection.execute(
+                sql.SQL(
+                    "DROP SCHEMA {} CASCADE"
+                ).format(
+                    sql.Identifier(schema)
+                )
+            )
 
 
 @pytest.mark.integration
-def test_upgrade_002_preserves_existing_worker_and_active_assignment(dsn, tmp_path, monkeypatch):
+def test_upgrade_002_preserves_existing_worker_and_active_assignment(
+    dsn,
+    tmp_path,
+    monkeypatch,
+):
     from scheduler.control_plane.scheduling import Scheduler
-    from scheduler.protocol.models import KNOWN_OPERATIONS, Completion, Register
+    from scheduler.protocol.models import (
+        KNOWN_OPERATIONS,
+        Completion,
+        Register,
+    )
     from scheduler.worker.workload import execute
 
     schema = "migration_" + uuid4().hex
-    with psycopg.connect(dsn, autocommit=True) as connection:
-        connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
-    isolated = make_conninfo(dsn, options=f"-c search_path={schema}")
+
+    with psycopg.connect(
+        dsn,
+        autocommit=True,
+    ) as connection:
+        connection.execute(
+            sql.SQL(
+                "CREATE SCHEMA {}"
+            ).format(
+                sql.Identifier(schema)
+            )
+        )
+
+    isolated = make_conninfo(
+        dsn,
+        options=f"-c search_path={schema}",
+    )
+
     migrations = database.MIGRATIONS
-    for name in ("001_initial.sql", "002_workloads.sql"):
-        (tmp_path / name).write_bytes((migrations / name).read_bytes())
+
+    # Simulate an installation that has only migrations 001 and 002.
+    for name in (
+        "001_initial.sql",
+        "002_workloads.sql",
+    ):
+        (
+            tmp_path / name
+        ).write_bytes(
+            (
+                migrations / name
+            ).read_bytes()
+        )
+
+    # Migration 002 is part of the immutable published history.
     assert (
-        hashlib.sha256((migrations / "002_workloads.sql").read_bytes()).hexdigest()
+        hashlib.sha256(
+            (
+                migrations / "002_workloads.sql"
+            ).read_bytes()
+        ).hexdigest()
         == "cddb5d54f0d9c20db15ca04ddba7222ba09db36714ea95bd023025556d215bc7"
     )
+
     db = None
+
     try:
-        monkeypatch.setattr(database, "MIGRATIONS", tmp_path)
+        monkeypatch.setattr(
+            database,
+            "MIGRATIONS",
+            tmp_path,
+        )
+
         database.migrate(isolated)
-        db = database.Database(isolated)
-        jobs = Jobs(db, Settings())
+
+        db = database.Database(
+            isolated
+        )
+
+        jobs = Jobs(
+            db,
+            Settings(),
+        )
+
         job, _ = jobs.create(
             CreateJob(
-                name="old", taskCount=1, payload={"operation": "MONTE_CARLO_PI", "samples": 1000, "seed": 2}
+                name="old",
+                taskCount=1,
+                payload={
+                    "operation": "MONTE_CARLO_PI",
+                    "samples": 1000,
+                    "seed": 2,
+                },
             ),
             "old",
         )
-        task = jobs.list_tasks(job["id"], 200)["items"][0]
-        worker, attempt = uuid4(), uuid4()
+
+        task = jobs.list_tasks(
+            job["id"],
+            200,
+        )["items"][0]
+
+        worker = uuid4()
+        attempt = uuid4()
 
         def old_assignment(c):
+            # Recreate state that existed before worker capabilities were introduced.
             c.execute(
-                "INSERT INTO workers(id,hostname,version,status,capacity) VALUES (%s,'legacy','1','ONLINE',1)",
+                """
+                INSERT INTO workers(
+                    id,
+                    hostname,
+                    version,
+                    status,
+                    capacity
+                )
+                VALUES (
+                    %s,
+                    'legacy',
+                    '1',
+                    'ONLINE',
+                    1
+                )
+                """,
                 (worker,),
             )
+
             c.execute(
-                """INSERT INTO task_attempts(id,task_id,worker_id,attempt_number,claim_request_id,status,lease_expires_at)
-                         VALUES (%s,%s,%s,1,%s,'ASSIGNED',clock_timestamp()+interval '60 seconds')""",
-                (attempt, task["id"], worker, uuid4()),
-            )
-            c.execute("UPDATE tasks SET status='ASSIGNED',attempt_count=1 WHERE id=%s", (task["id"],))
-            c.execute(
-                "UPDATE jobs SET status='RUNNING',started_at=clock_timestamp() WHERE id=%s", (job["id"],)
+                """
+                INSERT INTO task_attempts(
+                    id,
+                    task_id,
+                    worker_id,
+                    attempt_number,
+                    claim_request_id,
+                    status,
+                    lease_expires_at
+                )
+                VALUES (
+                    %s,
+                    %s,
+                    %s,
+                    1,
+                    %s,
+                    'ASSIGNED',
+                    clock_timestamp() + interval '60 seconds'
+                )
+                """,
+                (
+                    attempt,
+                    task["id"],
+                    worker,
+                    uuid4(),
+                ),
             )
 
-        db.run(old_assignment)
-        before_task, before_attempts = jobs.task(task["id"]), jobs.attempts(task["id"])
-        before_migrations = db.run(
-            lambda c: c.execute("SELECT * FROM schema_migrations ORDER BY version").fetchall()
+            c.execute(
+                """
+                UPDATE tasks
+                SET
+                    status = 'ASSIGNED',
+                    attempt_count = 1
+                WHERE id = %s
+                """,
+                (task["id"],),
+            )
+
+            c.execute(
+                """
+                UPDATE jobs
+                SET
+                    status = 'RUNNING',
+                    started_at = clock_timestamp()
+                WHERE id = %s
+                """,
+                (job["id"],),
+            )
+
+        db.run(
+            old_assignment
         )
-        monkeypatch.setattr(database, "MIGRATIONS", migrations)
+
+        before_task = jobs.task(
+            task["id"]
+        )
+
+        before_attempts = jobs.attempts(
+            task["id"]
+        )
+
+        before_migrations = db.run(
+            lambda c: c.execute(
+                """
+                SELECT *
+                FROM schema_migrations
+                ORDER BY version
+                """
+            ).fetchall()
+        )
+
+        # Upgrade the legacy installation with the complete migration set.
+        monkeypatch.setattr(
+            database,
+            "MIGRATIONS",
+            migrations,
+        )
+
         database.migrate(isolated)
         database.migrate(isolated)
+
         assert db.ready()
-        assert jobs.task(task["id"]) == before_task
-        assert jobs.attempts(task["id"]) == before_attempts
-        assert jobs.worker(worker)["supportedOperations"] == list(KNOWN_OPERATIONS)
+
+        # Existing task and active-attempt state must survive unchanged.
+        assert jobs.task(
+            task["id"]
+        ) == before_task
+
+        assert jobs.attempts(
+            task["id"]
+        ) == before_attempts
+
+        # Legacy workers gain support for every workload in this release.
+        assert jobs.worker(
+            worker
+        )["supportedOperations"] == list(
+            KNOWN_OPERATIONS
+        )
+
+        # Older migration records must not be rewritten during the upgrade.
         assert (
             db.run(
                 lambda c: c.execute(
-                    "SELECT * FROM schema_migrations WHERE version<'003' ORDER BY version"
+                    """
+                    SELECT *
+                    FROM schema_migrations
+                    WHERE version < '003'
+                    ORDER BY version
+                    """
                 ).fetchall()
             )
             == before_migrations
         )
-        scheduler = Scheduler(db, Settings())
-        scheduler.register(Register(workerId=worker, hostname="legacy", version="1", capacity=1))
-        scheduler.start(attempt, worker)
-        scheduler.complete(
-            attempt, Completion(workerId=worker, outcome="SUCCEEDED", result=execute(task["payload"]))
+
+        scheduler = Scheduler(
+            db,
+            Settings(),
         )
-        assert jobs.job(job["id"])["status"] == "COMPLETED"
+
+        # The legacy worker can continue its existing assignment after the upgrade.
+        scheduler.register(
+            Register(
+                workerId=worker,
+                hostname="legacy",
+                version="1",
+                capacity=1,
+            )
+        )
+
+        scheduler.start(
+            attempt,
+            worker,
+        )
+
+        scheduler.complete(
+            attempt,
+            Completion(
+                workerId=worker,
+                outcome="SUCCEEDED",
+                result=execute(
+                    task["payload"]
+                ),
+            ),
+        )
+
+        assert jobs.job(
+            job["id"]
+        )["status"] == "COMPLETED"
+
     finally:
         if db:
             db.close()
-        with psycopg.connect(dsn, autocommit=True) as connection:
-            connection.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
+
+        with psycopg.connect(
+            dsn,
+            autocommit=True,
+        ) as connection:
+            connection.execute(
+                sql.SQL(
+                    "DROP SCHEMA {} CASCADE"
+                ).format(
+                    sql.Identifier(schema)
+                )
+            )

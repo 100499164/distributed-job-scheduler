@@ -14,78 +14,219 @@ from scheduler.protocol.models import Claim, Register
 pytestmark = pytest.mark.integration
 
 
-def register(scheduler, capacity=1):
+def register(
+    scheduler,
+    capacity=1,
+):
     worker = uuid4()
-    scheduler.register(Register(workerId=worker, hostname="test", capacity=capacity, version="1"))
+
+    scheduler.register(
+        Register(
+            workerId=worker,
+            hostname="test",
+            capacity=capacity,
+            version="1",
+        )
+    )
+
     return worker
 
 
 def test_registration_idempotent_immutable_and_expired(db):
-    scheduler = Scheduler(db, Settings())
-    req = Register(workerId=uuid4(), hostname="test", capacity=1, version="1")
+    scheduler = Scheduler(
+        db,
+        Settings(),
+    )
+
+    req = Register(
+        workerId=uuid4(),
+        hostname="test",
+        capacity=1,
+        version="1",
+    )
+
+    # Repeating the same registration is idempotent.
     assert scheduler.register(req) == scheduler.register(req)
+
+    # The same worker identity cannot change immutable registration data.
     with pytest.raises(Conflict):
-        scheduler.register(req.model_copy(update={"capacity": 2}))
+        scheduler.register(
+            req.model_copy(
+                update={"capacity": 2}
+            )
+        )
+
     db.run(
         lambda c: c.execute(
-            "UPDATE workers SET registered_at=clock_timestamp()-interval '1 hour',last_heartbeat_at=clock_timestamp()-interval '40 seconds'"
+            """
+            UPDATE workers
+            SET
+                registered_at = clock_timestamp() - interval '1 hour',
+                last_heartbeat_at = clock_timestamp() - interval '40 seconds'
+            """
         )
     )
+
+    # An expired worker session cannot be revived through registration.
     with pytest.raises(Conflict) as error:
         scheduler.register(req)
+
     assert error.value.code == "SESSION_EXPIRED"
 
 
 def test_many_workers_and_repeated_claim(db):
-    Jobs(db, Settings()).create(request(count=8), "job")
-    scheduler = Scheduler(db, Settings())
-    workers = [register(scheduler) for _ in range(8)]
+    Jobs(
+        db,
+        Settings(),
+    ).create(
+        request(count=8),
+        "job",
+    )
+
+    scheduler = Scheduler(
+        db,
+        Settings(),
+    )
+
+    workers = [
+        register(scheduler)
+        for _ in range(8)
+    ]
+
     barrier = Barrier(8)
 
     def claim(worker):
-        req = Claim(workerId=worker, claimRequestId=uuid4())
+        req = Claim(
+            workerId=worker,
+            claimRequestId=uuid4(),
+        )
+
+        # Make all workers race for work at the same time.
         barrier.wait(timeout=10)
+
         first = scheduler.claim(req)
+
+        # Replaying the same claim request must return the same assignment.
         assert scheduler.claim(req) == first
+
         return first
 
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        assigned = list(pool.map(claim, workers))
-    assert len({r["taskId"] for r in assigned}) == 8
-    assert db.run(lambda c: c.execute("SELECT sum(attempt_count) AS n FROM tasks").fetchone())["n"] == 8
+    with ThreadPoolExecutor(
+        max_workers=8
+    ) as pool:
+        assigned = list(
+            pool.map(
+                claim,
+                workers,
+            )
+        )
+
+    # Every worker must receive a different task.
+    assert len(
+        {
+            result["taskId"]
+            for result in assigned
+        }
+    ) == 8
+
+    assert db.run(
+        lambda c: c.execute(
+            """
+            SELECT sum(attempt_count) AS n
+            FROM tasks
+            """
+        ).fetchone()
+    )["n"] == 8
 
 
 def test_two_claims_compete_for_one_slot(db):
-    Jobs(db, Settings()).create(request(count=2), "job")
-    scheduler = Scheduler(db, Settings())
-    worker, barrier = register(scheduler), Barrier(2)
+    Jobs(
+        db,
+        Settings(),
+    ).create(
+        request(count=2),
+        "job",
+    )
+
+    scheduler = Scheduler(
+        db,
+        Settings(),
+    )
+
+    worker = register(scheduler)
+    barrier = Barrier(2)
 
     def claim(_):
         barrier.wait(timeout=10)
+
         try:
-            return scheduler.claim(Claim(workerId=worker, claimRequestId=uuid4()))
+            return scheduler.claim(
+                Claim(
+                    workerId=worker,
+                    claimRequestId=uuid4(),
+                )
+            )
+
         except Conflict as exc:
             return exc.code
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(pool.map(claim, range(2)))
-    assert sum(isinstance(r, dict) for r in results) == 1
+    with ThreadPoolExecutor(
+        max_workers=2
+    ) as pool:
+        results = list(
+            pool.map(
+                claim,
+                range(2),
+            )
+        )
+
+    # A capacity-one worker can only hold one concurrent assignment.
+    assert sum(
+        isinstance(result, dict)
+        for result in results
+    ) == 1
+
     assert "CAPACITY_EXHAUSTED" in results
 
 
 def test_empty_claim_not_sticky_and_rollback(db):
-    scheduler = Scheduler(db, Settings())
+    scheduler = Scheduler(
+        db,
+        Settings(),
+    )
+
     worker = register(scheduler)
-    req = Claim(workerId=worker, claimRequestId=uuid4())
+
+    req = Claim(
+        workerId=worker,
+        claimRequestId=uuid4(),
+    )
+
+    # An empty claim must not reserve the request ID permanently.
     assert scheduler.claim(req) is None
-    Jobs(db, Settings()).create(request(count=1), "job")
+
+    Jobs(
+        db,
+        Settings(),
+    ).create(
+        request(count=1),
+        "job",
+    )
 
     def hook(name, c):
         if name == "claim_before_commit":
-            raise RuntimeError("injected rollback")
+            raise RuntimeError(
+                "injected rollback"
+            )
 
     scheduler.hook = hook
+
+    # A failed transaction must not consume the assignment or claim request.
     with pytest.raises(RuntimeError):
         scheduler.claim(req)
+
     scheduler.hook = lambda name, c: None
-    assert scheduler.claim(req)["attemptNumber"] == 1
+
+    assert scheduler.claim(
+        req
+    )["attemptNumber"] == 1

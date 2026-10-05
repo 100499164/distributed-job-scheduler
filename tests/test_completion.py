@@ -15,21 +15,46 @@ from scheduler.worker.workload import Cancelled, prime_count
 
 
 def setup_job(db, count=1):
-    scheduler, jobs = Scheduler(db, Settings()), Jobs(db, Settings())
-    job, _ = jobs.create(request(count), "job")
+    scheduler = Scheduler(db, Settings())
+    jobs = Jobs(db, Settings())
+
+    job, _ = jobs.create(
+        request(count),
+        "job",
+    )
+
     assigned = []
+
     for _ in range(count):
         worker = register(scheduler)
-        assigned.append((worker, scheduler.claim(Claim(workerId=worker, claimRequestId=uuid4()))))
+
+        assigned.append(
+            (
+                worker,
+                scheduler.claim(
+                    Claim(
+                        workerId=worker,
+                        claimRequestId=uuid4(),
+                    )
+                ),
+            )
+        )
+
     return scheduler, jobs, job, assigned
 
 
 def completion(worker, assignment):
-    p = assignment["payload"]
+    payload = assignment["payload"]
+
     return Completion(
         workerId=worker,
         outcome="SUCCEEDED",
-        result={"primeCount": prime_count(p["fromInclusive"], p["toExclusive"])},
+        result={
+            "primeCount": prime_count(
+                payload["fromInclusive"],
+                payload["toExclusive"],
+            )
+        },
     )
 
 
@@ -37,61 +62,183 @@ def test_prime_known_and_cooperative():
     assert prime_count(2, 100) == 25
     assert prime_count(2, 100000) == 9592
     assert prime_count(10, 11) == 0
+
+    # Long-running calculations must cooperate with cancellation.
     with pytest.raises(Cancelled):
-        prime_count(2, 10000, lambda: True)
+        prime_count(
+            2,
+            10000,
+            lambda: True,
+        )
 
 
 @pytest.mark.integration
 def test_start_and_completion_idempotence_even_after_offline(db):
-    s, jobs, job, [(worker, a)] = setup_job(db)
-    aid = a["attemptId"]
+    scheduler, jobs, job, [(worker, assignment)] = setup_job(db)
+    attempt_id = assignment["attemptId"]
+
+    # Completion is invalid until the assigned attempt has started.
     with pytest.raises(Conflict):
-        s.complete(aid, completion(worker, a))
-    first = s.start(aid, worker)
-    assert s.start(aid, worker) == first
-    result = s.complete(aid, completion(worker, a))
-    db.run(lambda c: c.execute("UPDATE workers SET status='OFFLINE',offline_at=clock_timestamp()"))
-    assert s.complete(aid, completion(worker, a)) == result
+        scheduler.complete(
+            attempt_id,
+            completion(worker, assignment),
+        )
+
+    first = scheduler.start(
+        attempt_id,
+        worker,
+    )
+
+    # Starting the same attempt again is idempotent.
+    assert scheduler.start(
+        attempt_id,
+        worker,
+    ) == first
+
+    result = scheduler.complete(
+        attempt_id,
+        completion(worker, assignment),
+    )
+
+    db.run(
+        lambda c: c.execute(
+            """
+            UPDATE workers
+            SET
+                status = 'OFFLINE',
+                offline_at = clock_timestamp()
+            """
+        )
+    )
+
+    # An already accepted completion remains replayable even if the worker goes offline.
+    assert scheduler.complete(
+        attempt_id,
+        completion(worker, assignment),
+    ) == result
+
+    # Replaying the attempt with a different result is a conflict.
     with pytest.raises(Conflict):
-        s.complete(aid, Completion(workerId=worker, outcome="SUCCEEDED", result={"primeCount": 0}))
+        scheduler.complete(
+            attempt_id,
+            Completion(
+                workerId=worker,
+                outcome="SUCCEEDED",
+                result={"primeCount": 0},
+            ),
+        )
+
     state = jobs.job(job["id"])
-    assert state["status"] == "COMPLETED" and state["completedTasks"] == 1
-    assert state["result"] == {"totalPrimeCount": 25}
+
+    assert (
+        state["status"] == "COMPLETED"
+        and state["completedTasks"] == 1
+    )
+
+    assert state["result"] == {
+        "totalPrimeCount": 25
+    }
 
 
 @pytest.mark.integration
 def test_last_completions_concurrent(db):
-    s, jobs, job, assignments = setup_job(db, 2)
+    scheduler, jobs, job, assignments = setup_job(
+        db,
+        2,
+    )
+
     barrier = Barrier(2)
-    for w, a in assignments:
-        s.start(a["attemptId"], w)
+
+    for worker, assignment in assignments:
+        scheduler.start(
+            assignment["attemptId"],
+            worker,
+        )
 
     def finish(item):
-        w, a = item
-        barrier.wait(timeout=10)
-        return s.complete(a["attemptId"], completion(w, a))
+        worker, assignment = item
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        list(pool.map(finish, assignments))
-    assert jobs.job(job["id"])["result"] == {"totalPrimeCount": 25}
-    assert jobs.job(job["id"])["completedTasks"] == 2
+        # Make both final completions race for the same job update.
+        barrier.wait(timeout=10)
+
+        return scheduler.complete(
+            assignment["attemptId"],
+            completion(
+                worker,
+                assignment,
+            ),
+        )
+
+    with ThreadPoolExecutor(
+        max_workers=2
+    ) as pool:
+        list(
+            pool.map(
+                finish,
+                assignments,
+            )
+        )
+
+    assert jobs.job(
+        job["id"]
+    )["result"] == {
+        "totalPrimeCount": 25
+    }
+
+    assert jobs.job(
+        job["id"]
+    )["completedTasks"] == 2
 
 
 @pytest.mark.integration
 def test_lost_completion_ack_and_wrong_owner(db):
-    s, jobs, job, [(worker, a)] = setup_job(db)
-    aid = a["attemptId"]
-    s.start(aid, worker)
+    scheduler, jobs, job, [(worker, assignment)] = setup_job(db)
+    attempt_id = assignment["attemptId"]
+
+    scheduler.start(
+        attempt_id,
+        worker,
+    )
+
+    # Only the worker that owns the attempt may complete it.
     with pytest.raises(Conflict):
-        s.complete(aid, completion(uuid4(), a))
+        scheduler.complete(
+            attempt_id,
+            completion(
+                uuid4(),
+                assignment,
+            ),
+        )
 
     def drop(name, c):
         if name == "completion_after_commit":
-            raise ConnectionError("ACK lost after commit")
+            raise ConnectionError(
+                "ACK lost after commit"
+            )
 
-    s.hook = drop
+    scheduler.hook = drop
+
+    # Simulate the DB commit succeeding while the client loses the ACK.
     with pytest.raises(ConnectionError):
-        s.complete(aid, completion(worker, a))
-    s.hook = lambda *args: None
-    assert s.complete(aid, completion(worker, a))["status"] == "SUCCEEDED"
-    assert jobs.job(job["id"])["completedTasks"] == 1
+        scheduler.complete(
+            attempt_id,
+            completion(
+                worker,
+                assignment,
+            ),
+        )
+
+    scheduler.hook = lambda *args: None
+
+    # Retrying the same completion must recover the committed result.
+    assert scheduler.complete(
+        attempt_id,
+        completion(
+            worker,
+            assignment,
+        ),
+    )["status"] == "SUCCEEDED"
+
+    assert jobs.job(
+        job["id"]
+    )["completedTasks"] == 1
